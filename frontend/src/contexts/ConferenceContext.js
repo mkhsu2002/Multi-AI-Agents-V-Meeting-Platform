@@ -35,11 +35,29 @@ export const ConferenceProvider = ({ children }) => {
       
       newSocket.onopen = () => {
         console.log('WebSocket連接已建立');
+        setError(null); // 清除任何先前的錯誤
       };
       
       newSocket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log('收到WebSocket消息:', data);
+        
+        // 處理錯誤消息
+        if (data.type === MESSAGE_TYPES.ERROR) {
+          console.error('收到錯誤訊息:', data.message);
+          setError(data.message);
+          setIsLoading(false);
+          
+          // 如果錯誤是因為會議不存在，可以考慮重新創建會議
+          if (data.message === "會議不存在" && config) {
+            console.log('嘗試重新創建會議...');
+            // 延遲1秒後重新創建會議
+            setTimeout(() => {
+              startConference(config);
+            }, 1000);
+          }
+          return;
+        }
         
         switch (data.type) {
           case MESSAGE_TYPES.INIT:
@@ -73,11 +91,6 @@ export const ConferenceProvider = ({ children }) => {
             setConclusion(data.text);
             break;
             
-          case MESSAGE_TYPES.ERROR:
-            setError(data.message);
-            setIsLoading(false);
-            break;
-            
           default:
             console.log('未處理的WebSocket消息類型:', data.type);
         }
@@ -89,8 +102,27 @@ export const ConferenceProvider = ({ children }) => {
         setIsLoading(false);
       };
       
-      newSocket.onclose = () => {
-        console.log('WebSocket連接已關閉');
+      newSocket.onclose = (event) => {
+        console.log(`WebSocket連接已關閉，代碼: ${event.code}, 原因: ${event.reason}`);
+        
+        // 如果是正常關閉，不需處理
+        if (event.code === 1000) {
+          return;
+        }
+        
+        // 如果是非正常關閉，且有配置，嘗試重新連接
+        if (config && !event.wasClean) {
+          console.log('嘗試重新連接...');
+          setTimeout(() => {
+            if (confId) {
+              // 先嘗試直接重連
+              connectSocket(confId);
+            } else if (config) {
+              // 如果沒有會議ID，嘗試重新創建會議
+              startConference(config);
+            }
+          }, 3000); // 延遲3秒後重試
+        }
       };
       
       setSocket(newSocket);
