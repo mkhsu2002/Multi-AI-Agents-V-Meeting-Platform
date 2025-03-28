@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import ConferenceRoom from './pages/ConferenceRoom';
 import SetupPanel from './pages/SetupPanel';
 import TestPage from './pages/TestPage';
+import AgentManagement from './pages/AgentManagement';
 import { ConferenceProvider } from './contexts/ConferenceContext';
+import { DEFAULT_ROLES } from './config/agents';
 import './App.css';
 
 function App() {
@@ -11,17 +13,86 @@ function App() {
   const [conferenceConfig, setConferenceConfig] = useState({
     topic: '',
     rounds: 6,
-    chair: 'Pig Boss',
-    participants: [
-      { id: 'Pig Boss', name: '豬霸天', title: '總經理', temperature: 0.7, isActive: true },
-      { id: 'Brainy Pig', name: '豬腦筋', title: '行銷經理', temperature: 0.6, isActive: true },
-      { id: 'Busy Pig', name: '豬搶錢', title: '業務經理', temperature: 0.6, isActive: true },
-      { id: 'Professor Pig', name: '豬博士', title: '研發主管', temperature: 0.5, isActive: true },
-      { id: 'Calculator Pig', name: '豬算盤', title: '財務經理', temperature: 0.4, isActive: true },
-      { id: 'Caregiver Pig', name: '豬保姆', title: '人事經理', temperature: 0.5, isActive: true },
-      { id: 'Secretary Pig', name: '豬秘書', title: '秘書', temperature: 0.3, isActive: true }
-    ]
+    chair: 'General manager',
+    participants: []
   });
+
+  // 加載智能體數據
+  useEffect(() => {
+    loadAgentData();
+    
+    // 監聽智能體數據變更事件
+    window.addEventListener('agentDataChanged', handleAgentDataChanged);
+    
+    // 同時監聽 localStorage 的變化，以便在其他分頁更改數據時更新
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('agentDataChanged', handleAgentDataChanged);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  // 處理智能體數據變化事件
+  const handleAgentDataChanged = (event) => {
+    if (event.detail) {
+      setConferenceConfig(prev => ({
+        ...prev,
+        participants: event.detail
+      }));
+    } else {
+      loadAgentData();
+    }
+  };
+
+  // 處理 localStorage 變更
+  const handleStorageChange = (event) => {
+    if (event.key === 'agents') {
+      loadAgentData();
+    }
+  };
+
+  // 從 localStorage 或默認配置加載智能體數據
+  const loadAgentData = () => {
+    try {
+      const savedAgents = localStorage.getItem('agents');
+      if (savedAgents) {
+        const parsedAgents = JSON.parse(savedAgents);
+        
+        // 更新會議主席（如果當前主席不在列表中）
+        let foundChair = parsedAgents.find(agent => agent.id === conferenceConfig.chair);
+        if (!foundChair) {
+          // 尋找第一個非秘書的啟用角色作為新主席
+          const newChair = parsedAgents.find(agent => agent.id !== 'Secretary' && agent.isActive);
+          if (newChair) {
+            setConferenceConfig(prev => ({
+              ...prev,
+              chair: newChair.id
+            }));
+          }
+        }
+        
+        // 更新參與者列表
+        setConferenceConfig(prev => ({
+          ...prev,
+          participants: parsedAgents
+        }));
+      } else {
+        // 使用默認角色
+        setConferenceConfig(prev => ({
+          ...prev,
+          participants: DEFAULT_ROLES
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading agent data:', error);
+      // 出錯時使用默認角色
+      setConferenceConfig(prev => ({
+        ...prev,
+        participants: DEFAULT_ROLES
+      }));
+    }
+  };
 
   const startConference = (config) => {
     setConferenceConfig(config);
@@ -47,9 +118,10 @@ function App() {
   const Navigation = () => (
     <nav className="p-4 bg-primary text-white">
       <div className="container mx-auto flex justify-between items-center">
-        <div className="text-xl font-bold">小豬會議系統</div>
+        <div className="text-xl font-bold">飛豬隊友 AI 虛擬會議系統</div>
         <div className="space-x-4">
           <Link to="/" className="hover:underline">首頁</Link>
+          <Link to="/agents" className="hover:underline">智能體管理</Link>
           <Link to="/test" className="hover:underline">測試頁面</Link>
         </div>
       </div>
@@ -59,7 +131,7 @@ function App() {
   const Footer = () => (
     <footer className="p-4 bg-primary text-white text-center mt-8">
       <div className="container mx-auto">
-        <div className="mb-2">飛豬隊友 AI 虛擬會議系統 v1.1</div>
+        <div className="mb-2">飛豬隊友 AI 虛擬會議系統 v1.2</div>
         <div className="flex justify-center items-center space-x-4">
           <a 
             href="https://buymeacoffee.com/mkhsu2002w" 
@@ -92,6 +164,7 @@ function App() {
         <div className="flex-grow">
           <Routes>
             <Route path="/" element={<MainContent />} />
+            <Route path="/agents" element={<AgentManagement />} />
             <Route path="/test" element={<TestPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

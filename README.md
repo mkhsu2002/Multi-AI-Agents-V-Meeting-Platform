@@ -1,4 +1,4 @@
-# FlyPig AI Virtual Conference System (v1.1)
+# FlyPig AI Virtual Conference System (v1.2)
 
 [![YouTube Video Presentation](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
@@ -8,8 +8,15 @@ FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeti
 
 ## Version Information
 
-Current Version: v1.1
+Current Version: v1.2
 Major Updates:
+- Added comprehensive Agent Management interface for creating, editing, and managing AI agents
+- Implemented agent import/export functionality with bulk operations support
+- Added role prompts to influence AI agent behavior and response styles
+- Enhanced data synchronization between pages for better state management
+- Fixed agent name display issues and improved UI consistency
+
+Previous Version (v1.1):
 - Enhanced WebSocket connection stability with automatic reconnection mechanism
 - Optimized frontend error handling logic for improved user experience
 - Added automated restart script for easier development and deployment
@@ -18,6 +25,7 @@ Major Updates:
 
 ## Key Features
 
+- **AI Agent Management**: Complete interface for creating, editing, and managing AI agents with custom personalities
 - **AI Agent Interaction & Personalization**: Each AI character is powered by LLM with distinct personalities, expertise areas, and speaking styles
 - **Meeting Process Management**: Support for custom topics, multi-round discussions, and role assignments
 - **Visual Conversation Display**: Dynamic presentation of AI agent dialogues similar to real meeting scenarios
@@ -93,10 +101,11 @@ uvicorn app.main:app --reload
 ## Usage Guide
 
 1. After opening the application, you can configure the meeting topic, number of rounds, and participants in the setup panel
-2. After clicking the "Start Meeting" button, the system will automatically begin the meeting process
-3. Each AI character will introduce themselves in turn, then enter the discussion phase
-4. At the end of the meeting, the moderator will summarize the key points
-5. You can export the meeting minutes at any time
+2. To manage AI agents, navigate to the "Agent Management" page where you can create, edit, or delete agents
+3. After clicking the "Start Meeting" button, the system will automatically begin the meeting process
+4. Each AI character will introduce themselves in turn, then enter the discussion phase
+5. At the end of the meeting, the moderator will summarize the key points
+6. You can export the meeting minutes at any time
 
 ## API Test Page
 
@@ -147,12 +156,12 @@ Visit `http://localhost:8000/api-test` to open the API test page, which allows y
 
 - You can add new UI elements or interactive features by modifying the frontend code
 - The AI character generation logic and conversation flow can be adjusted through the backend code
-- To add new characters, you can add new character configurations in `frontend/src/config/agents.js`
+- To add or edit AI agents, use the Agent Management interface at http://localhost:3000/agents
+- You can also export your customized agents and share them with others
 
 ## Future Plans
 
 - **Meeting Process Optimization**: Make the meeting process more logical and ensure effective meeting conclusions.
-- **Agent Management Interface**: Provide an intuitive UI interface for character editing and management
 - **Multi-language Support**: Extend support to English, Japanese, and other languages in addition to Traditional Chinese
 - **Multiple LLM API Support**: Extend support to Anthropic Claude, Google Gemini, local Ollama, and various other LLM APIs in addition to OpenAI
 - **Different Meeting Scenario Templates**: Establish prompt templates for pig teammate AI agents based on different meeting scenarios such as collective creation, market analysis, creative inspiration, etc.
