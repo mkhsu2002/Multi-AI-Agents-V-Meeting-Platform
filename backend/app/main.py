@@ -21,8 +21,26 @@ from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLAT
 load_dotenv()
 
 # 配置日誌
-logging.basicConfig(level=logging.INFO)
+log_level_str = os.getenv("LOG_LEVEL", "INFO")
+log_file = os.getenv("LOG_FILE", "app/logs/app.log")
+
+# 將字符串日誌級別轉換為對應的logging級別
+log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+
+# 確保日誌目錄存在
+os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+# 設置日誌配置
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
+logger.info(f"日誌級別設置為 {log_level_str}，日誌文件路徑為 {log_file}")
 
 # 創建FastAPI應用
 app = FastAPI(
