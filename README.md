@@ -1,4 +1,9 @@
 # 飛豬隊友 AI 虛擬會議系統 (v1.1)
+# FlyPig AI Virtual Conference System (v1.1)
+
+[English Description](#english-description) | [繁體中文說明](#繁體中文說明)
+
+## 繁體中文說明
 
 基於 LLM 驅動的 Multi AI Agents Group Meeting，允許多個智能體進行互動式討論，模擬商務會議、創意腦力激盪或學術辯論場景。首創具備 Web Base 即時視覺化完整呈現會議過程。 
 
@@ -123,7 +128,7 @@ uvicorn app.main:app --reload
    python -m venv venv
    source venv/bin/activate  # Windows: venv\Scripts\activate
    pip install -r requirements.txt
-   cp .env.example .env  # 記得編輯 .env 文件添加您的 API 密鑰
+   cp .env.example .env
    python run.py  # 或使用 uvicorn app.main:app --reload
    ```
 
@@ -188,3 +193,194 @@ uvicorn app.main:app --reload
 * 此改版由 [您的名稱/公司名稱] 維護，基於 FlyPig AI 的貢獻。
 
 此要求旨在確保原始貢獻得到適當的認可，並促進開源社群的良好合作。
+
+## English Description
+
+FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeting platform that allows multiple AI agents to engage in interactive discussions, simulating business meetings, creative brainstorming sessions, or academic debates. It features a pioneering web-based real-time visualization of the entire meeting process.
+
+## Version Information
+
+Current Version: v1.1
+Major Updates:
+- Enhanced WebSocket connection stability with automatic reconnection mechanism
+- Optimized frontend error handling logic for improved user experience
+- Added automated restart script for easier development and deployment
+- Fixed meeting loss issues to improve system reliability
+- Improved exception handling and logging
+
+## Key Features
+
+- **AI Agent Interaction & Personalization**: Each AI character is powered by LLM with distinct personalities, expertise areas, and speaking styles
+- **Meeting Process Management**: Support for custom topics, multi-round discussions, and role assignments
+- **Visual Conversation Display**: Dynamic presentation of AI agent dialogues similar to real meeting scenarios
+- **Meeting Records & Analysis**: Automatic generation of meeting minutes with key content summaries
+- **Preset Character System**: Includes various functional "Pig Teammate" roles such as CEO, Marketing Manager, Sales Manager, etc.
+- **Real-time Interaction**: Using WebSocket technology to ensure immediacy and coherence of conversation flow
+- **Meeting Phase Control**: Includes introduction, discussion, and conclusion phases to simulate real meeting processes
+- **Multi-round Discussion Support**: Configurable multi-round discussions with clear topics and objectives for each round
+- **Meeting Record Export**: Support for exporting the entire meeting process in Markdown format for easy saving and sharing
+
+## Technical Architecture
+
+- **Frontend**: React + TailwindCSS
+- **Backend**: Python (FastAPI)
+- **AI Engine**: OpenAI API
+- **Real-time Communication**: WebSocket
+- **Data Storage**: Currently using in-memory storage, with plans to support databases in the future
+
+## Quick Start
+
+### Frontend Setup
+
+```bash
+# Enter the frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm start
+```
+
+### Backend Setup
+
+```bash
+# Enter the backend directory
+cd backend
+
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment variables
+cp .env.example .env
+# Edit the .env file to add your OpenAI API key
+
+# Start the backend server
+uvicorn app.main:app --reload
+```
+
+## System Architecture
+
+```
+/
+├── frontend/                # React frontend
+│   ├── public/              # Static files
+│   └── src/
+│       ├── components/      # UI components
+│       ├── contexts/        # React Context
+│       ├── pages/           # Page components
+│       └── utils/           # Utility functions
+├── backend/                 # Python backend
+│   ├── app/                 # Main application
+│   ├── models/              # Data models
+│   └── utils/               # Utility functions
+└── README.md                # Project documentation
+```
+
+## Usage Instructions
+
+1. After opening the application, you can configure the meeting topic, number of rounds, and participants in the setup panel
+2. After clicking the "Start Meeting" button, the system will automatically begin the meeting process
+3. Each AI character will introduce themselves in turn, then enter the discussion phase
+4. At the end of the meeting, the chairperson will summarize the key points
+5. You can export the meeting record at any time
+
+## API Test Page
+
+Visit `http://localhost:8000/api-test` to open the API test page, which can be used to:
+- Check the OpenAI API connection status
+- Update the API key
+- Test conversations with the LLM
+
+## Installation Guide
+
+### System Requirements
+- Node.js v14+
+- Python 3.8+
+- npm or yarn
+- Valid OpenAI API key
+
+### Complete Installation Steps
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
+   cd TinyPigTroupe
+   ```
+
+2. Install and start the backend
+   ```bash
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   cp .env.example .env  # Remember to edit the .env file to add your API key
+   python run.py  # Or use uvicorn app.main:app --reload
+   ```
+
+3. Install and start the frontend
+   ```bash
+   cd ../frontend
+   npm install
+   npm start
+   ```
+
+4. Access the application
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
+   - API Test Page: http://localhost:8000/api-test
+
+## Customization & Extension
+
+- New UI elements or interactive features can be added by modifying the frontend code
+- AI character generation logic and conversation flow can be adjusted through the backend code
+- To add new characters, add new character configurations in `frontend/src/config/agents.js`
+
+## Future Plans
+
+- **Meeting Process Optimization**: Making meeting flows logical and ensuring valuable meeting conclusions
+- **AI Agent Management Interface**: Providing intuitive UI interfaces for character editing and management
+- **Multi-language Support**: Extending beyond Traditional Chinese to English, Japanese, and other languages
+- **Multiple LLM API Support**: Extending beyond OpenAI to support Anthropic Claude, Google Gemini, local Ollama, and other LLM APIs
+- **Different Scenario Meeting Templates**: Building pig teammate AI agent prompt templates for different meeting scenarios such as collective creation, market analysis, creativity stimulation, etc.
+- **Database Integration**: Moving from in-memory storage to persistent storage with support for meeting record queries
+- **User Authentication System**: Adding login functionality to support multi-user environments
+- **Meeting Analysis Tools**: Providing deeper analysis of meeting content
+- **Interface Aesthetic Optimization**: AI agent avatar generation, emotional identification in dialogue windows
+- **Community Sharing Features**: Meeting livestream functionality, meeting recording downloads
+
+## Acknowledgements
+
+Thanks to [Microsoft TinyTroupe](https://github.com/microsoft/TinyTroupe/)! This project was conceptually inspired by Microsoft's TinyTroupe, but as the existing architecture didn't fully meet our desired implementation effects, we decided to rebuild from scratch. Our goal is to create a virtual meeting system where each AI agent is driven by LLM, providing a visualized meeting presentation that allows users to intuitively feel the interaction and dialogue between AI agents.
+
+## Contributions
+
+We eagerly welcome experts and developers from various fields to join this project! Whether you specialize in frontend development, backend architecture, UI design, prompt engineering, or LLM applications, you can utilize your talents here. If you have any ideas or suggestions, please feel free to submit a Pull Request or raise an Issue.
+
+## Support Us
+
+If you find this project helpful, you can buy us a coffee to support our development work!
+
+<a href="https://buymeacoffee.com/mkhsu2002w" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >
+</a>
+
+Your donations will be used for:
+- Continued development and feature enhancement
+- API fees
+- System optimization and maintenance
+- Community building and support
+
+## License: MIT License
+
+Additional terms: To respect the original contributors of this project, we require that all modified versions or derivative works based on this project clearly mark FlyPig AI in their documentation or code comments. For example:
+
+* This project is modified based on FlyPig AI's TinyPigTroupe open-source project.
+* This modified version is maintained by [Your Name/Company Name], based on contributions from FlyPig AI.
+
+This requirement is intended to ensure that original contributions are properly acknowledged and to promote good collaboration in the open-source community.
