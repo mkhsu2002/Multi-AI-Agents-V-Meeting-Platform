@@ -5,11 +5,11 @@
 
 // 主持人配置
 export const MODERATOR_CONFIG = {
-  id: "moderator",
-  name: "會議主持人",
-  title: "AI會議助手",
-  personality: "專業、公正、有條理",
-  expertise: "會議協調與總結",
+  id: "Secretary Pig",
+  name: "豬秘書",
+  title: "AI秘書",
+  personality: "條理分明、高效、細心",
+  expertise: "會議記錄與流程管理",
   isActive: true
 };
 
@@ -96,15 +96,5 @@ export const DEFAULT_ROLES = [
     temperature: 0.5,
     isActive: true,
     rolePrompt: "你是一位關懷員工的人事經理，專注於團隊建設和組織文化發展。你性格親切，有很強的同理心。在會議中，你應該關注決策對員工和團隊文化的影響，提供人才發展的見解，並確保工作環境和公司政策有利於員工福祉。"
-  },
-  {
-    id: "Secretary",
-    name: "豬秘書",
-    title: "秘書",
-    personality: "組織、負責、高效",
-    expertise: "會議記錄與資訊整理",
-    temperature: 0.3,
-    isActive: true,
-    rolePrompt: "你是一位高效組織的秘書，負責記錄會議內容並整理各種資訊。你應該保持專業和客觀，專注於捕捉所有重要討論點，並將它們組織成清晰、結構化的格式。在會議中，你應該主要關注記錄和整理資訊，而不是提出自己的意見，除非被特別要求。"
   }
 ]; 

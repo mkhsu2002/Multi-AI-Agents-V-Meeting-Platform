@@ -46,7 +46,7 @@ logger.info(f"日誌級別設置為 {log_level_str}，日誌文件路徑為 {log
 app = FastAPI(
     title="FlyPig AI Conference API",
     description="飛豬隊友AI虛擬會議系統的後端API",
-    version="0.5.0"
+    version="1.5.0"
 )
 
 # 創建靜態文件目錄
@@ -913,11 +913,11 @@ async def generate_introductions(conference_id: str):
     config = conf["config"]
     topic = config["topic"]
     
-    # 主持人介紹會議
+    # 豬秘書(作為主持人)介紹會議
     await add_message(
         conference_id,
-        "moderator",
-        f"大家好，歡迎參加今天的主題為「{topic}」的會議。現在我們將進行自我介紹，請各位簡單介紹自己並談談對今天主題的看法。"
+        MODERATOR_CONFIG["id"],
+        f"大家好，我是{MODERATOR_CONFIG['name']}，擔任今天會議的秘書。歡迎參加主題為「{topic}」的會議。現在我們將進行自我介紹，請各位簡單介紹自己並談談對今天主題的看法。自我介紹完成後，我們將由主席引導進入正式討論階段。"
     )
     
     # 等待1秒使界面顯示更自然
@@ -928,7 +928,11 @@ async def generate_introductions(conference_id: str):
         if not participant["isActive"]:
             continue
         
-        # 構建提示
+        # 跳過主持人(豬秘書)，因為已經在開場白中介紹過自己
+        if participant["id"] == MODERATOR_CONFIG["id"]:
+            continue
+            
+        # 構建一般參與者的提示
         prompt = PROMPT_TEMPLATES["introduction"].format(
             name=participant['name'],
             title=participant['title'],
@@ -944,14 +948,7 @@ async def generate_introductions(conference_id: str):
         # 模擬打字延遲
         await asyncio.sleep(3)
     
-    # 主持人結束介紹階段
-    await add_message(
-        conference_id,
-        "moderator",
-        "謝謝大家的自我介紹。現在我們將進入正式討論階段，請各位就主題展開發言。"
-    )
-    
-    await asyncio.sleep(1)
+    # 注意：此處不再添加主持人的結束語，將直接由主席在第一輪討論中開場
 
 async def run_discussion_round(conference_id: str, round_num: int):
     """執行一個討論回合"""
@@ -962,23 +959,34 @@ async def run_discussion_round(conference_id: str, round_num: int):
     # 更新當前回合
     await update_current_round(conference_id, round_num)
     
-    # 設置默認主持人 (使用第一位參與者或創建一個虛擬主持人)
-    # 獲取主席信息
+    # 設置主席（如果有指定）或使用默認主席
     chair = None
-    if "chair" in config:
+    if "chair" in config and config["chair"]:
         chair = next((p for p in config["participants"] if p["id"] == config["chair"]), None)
     
     if not chair:
-        # 使用會議主持人作為默認主席
-        chair = {
-            "id": "moderator",
-            "name": "會議主持人",
-            "title": "AI會議助手",
-            "temperature": 0.7
-        }
+        # 使用默認主席（選擇第一個非主持人的活躍參與者）
+        chair = next((p for p in config["participants"] 
+                     if p["isActive"] and p["id"] != MODERATOR_CONFIG["id"]), None)
+        
+        if not chair:
+            # 如果沒有其他適合的參與者，則使用一個默認設置
+            chair = {
+                "id": "default_chair",
+                "name": "默認主席",
+                "title": "會議引導者",
+                "temperature": 0.7
+            }
     
     # 生成回合主題
     round_topic = get_round_topic(round_num, topic)
+    
+    # 取得之前的消息作為上下文
+    previous_messages = []
+    if round_num > 1:
+        # 獲取最多10條之前的消息作為上下文
+        previous_messages = [m["text"] for m in conf["messages"][-min(10, len(conf["messages"])):]]
+    context = "\n".join(previous_messages)
     
     # 主席開場白
     chair_prompt = PROMPT_TEMPLATES["chair_opening"].format(
@@ -986,8 +994,10 @@ async def run_discussion_round(conference_id: str, round_num: int):
         title=chair['title'],
         round_num=round_num,
         topic=topic,
-        round_topic=round_topic
+        round_topic=round_topic,
+        context=context if round_num > 1 else ""
     )
+    
     chair_response = await generate_ai_response(chair_prompt, chair["id"], chair.get("temperature", 0.7))
     
     chair_message = {
@@ -1012,26 +1022,31 @@ async def run_discussion_round(conference_id: str, round_num: int):
     # 模擬打字延遲
     await asyncio.sleep(3)
     
-    # 獲取所有活躍參與者，並排除主席
+    # 獲取所有活躍參與者，排除主席和豬秘書(主持人)
     chair_id = chair["id"]
-    active_participants = [p for p in config["participants"] if p["isActive"] and p["id"] != chair_id]
+    active_participants = [p for p in config["participants"] 
+                         if p["isActive"] 
+                         and p["id"] != chair_id
+                         and p["id"] != MODERATOR_CONFIG["id"]]
     
     for idx, participant in enumerate(active_participants):
         # 收集之前的消息作為上下文
         previous_messages = [m["text"] for m in conf["messages"][-min(5, len(conf["messages"])):]]
         context = "\n".join(previous_messages)
         
-        # 構建提示
-        prompt = PROMPT_TEMPLATES["discussion"].format(
+        # 強調對之前發言的回應
+        modified_prompt = PROMPT_TEMPLATES["discussion"].format(
             name=participant['name'],
             title=participant['title'],
             topic=topic,
             round_topic=round_topic,
             context=context
         )
+        # 添加額外指示，確保發言的連貫性和相關性
+        modified_prompt += "\n請確保你的發言與之前的討論相關，特別是回應最近的1-2位發言者的觀點。避免泛泛而談，要有針對性地展開討論。"
         
         # 生成回應
-        response = await generate_ai_response(prompt, participant["id"], participant.get("temperature", 0.7))
+        response = await generate_ai_response(modified_prompt, participant["id"], participant.get("temperature", 0.7))
         
         # 建立消息物件
         message = {
@@ -1067,24 +1082,57 @@ async def generate_conclusion(conference_id: str):
     config = conf["config"]
     topic = config["topic"]
     
-    # 嘗試尋找秘書參與者，如果沒有則使用默認秘書
-    secretary = next((p for p in config["participants"] if p.get("id") == "Secretary Pig" and p.get("isActive", True)), None)
+    # 獲取主席
+    chair = None
+    if "chair" in config and config["chair"]:
+        chair = next((p for p in config["participants"] if p["id"] == config["chair"]), None)
     
-    if not secretary:
-        # 創建一個默認的秘書
-        secretary = {
-            "id": "conclusion_bot",
-            "name": "會議小結機器人",
-            "title": "AI總結助手",
-            "temperature": 0.5
-        }
+    if not chair:
+        # 使用第一個活躍非秘書參與者作為主席
+        chair = next((p for p in config["participants"] 
+                    if p["isActive"] and p["id"] != MODERATOR_CONFIG["id"]), None)
+    
+    # 主席引導結論階段
+    if chair:
+        await add_message(
+            conference_id,
+            chair["id"],
+            f"感謝各位的精彩討論。我們已經完成了所有討論回合，現在進入會議的總結階段。讓我們請{MODERATOR_CONFIG['name']}為我們整理今天會議的重點內容。"
+        )
+    else:
+        # 如果沒有主席，則由豬秘書自己引導
+        await add_message(
+            conference_id,
+            MODERATOR_CONFIG["id"],
+            f"感謝各位的精彩討論。我們已經完成了所有討論回合，現在進入會議的總結階段。作為會議秘書，我將為大家總結今天的會議要點。"
+        )
+    
+    await asyncio.sleep(2)
     
     # 收集所有消息作為上下文
     all_messages = [f"{m.get('speakerName', 'Unknown')} ({m.get('speakerTitle', 'Unknown')}): {m.get('text', '')}" for m in conf.get("messages", [])]
-    context = "\n".join(all_messages[-20:])  # 最後20條消息
+    context = "\n".join(all_messages[-30:])  # 最後30條消息，增加上下文範圍
     
-    # 構建提示
-    prompt = PROMPT_TEMPLATES["conclusion"].format(
+    # 構建特殊的秘書結論提示
+    secretary_prompt = """
+    你是{name}（{title}），負責整理會議記錄並提出總結。
+    
+    會議主題是「{topic}」，經過了多輪討論。
+    
+    以下是會議中的發言摘要：
+    {context}
+    
+    請你用繁體中文進行以下工作：
+    1. 簡短回應主席，表示你將進行會議總結
+    2. 總結整場會議的討論重點和主要觀點
+    3. 條理清晰地列出5-7點關鍵結論或行動項目
+    4. 提出1-2個後續可能需要關注的方向
+    
+    格式為：先有一段對主席的回應，然後是總結內容，最後是帶編號的結論列表。總字數控制在400字以內。
+    """.format(
+        name=MODERATOR_CONFIG['name'],
+        title=MODERATOR_CONFIG['title'],
+        topic=topic,
         context=context
     )
     
@@ -1094,76 +1142,56 @@ async def generate_conclusion(conference_id: str):
         
         if not client:
             # 如果API客戶端不可用，返回一個通用結論
-            conclusion = f"由於技術原因，無法連接到AI服務生成完整的會議結論。這裡是一個簡單的總結：{topic}的會議已結束，感謝所有與會者的寶貴意見。"
+            conclusion = f"謝謝主席。作為會議秘書，我整理了關於「{topic}」的討論要點。由於技術原因，無法生成完整的分析，但仍感謝各位的積極參與和寶貴意見。"
         else:
             try:
-                # 嘗試使用新版API
-                if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "你是一位專業的會議秘書，負責總結會議要點和提出建議。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0.5,
-                        max_tokens=350
-                    )
-                    conclusion = response.choices[0].message.content.strip()
-                else:
-                    # 嘗試使用舊版API
-                    response = client.ChatCompletion.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "你是一位專業的會議秘書，負責總結會議要點和提出建議。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0.5,
-                        max_tokens=350
-                    )
-                    conclusion = response.choices[0].message.content.strip()
-            except AttributeError:
-                # 嘗試使用全局API方法
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
+                # 修改API調用，不使用await
+                response = client.chat.completions.create(
+                    model=AI_CONFIG["default_model"],
+                    temperature=0.5,  # 使用較低的溫度確保結論更加連貫和精確
                     messages=[
-                        {"role": "system", "content": "你是一位專業的會議秘書，負責總結會議要點和提出建議。"},
-                        {"role": "user", "content": prompt}
+                        {"role": "system", "content": f"你是會議秘書{MODERATOR_CONFIG['name']}。你的工作是整理和總結會議內容，提供清晰的結論和後續行動項目。"},
+                        {"role": "user", "content": secretary_prompt}
                     ],
-                    temperature=0.5,
-                    max_tokens=350
+                    max_tokens=800
                 )
-                if hasattr(response.choices[0], 'message'):
-                    conclusion = response.choices[0].message.content.strip()
-                else:
-                    conclusion = response.choices[0]['message']['content'].strip()
+                
+                conclusion = response.choices[0].message.content.strip()
+            except Exception as e:
+                logger.error(f"生成結論時發生錯誤: {str(e)}")
+                conclusion = f"謝謝主席。作為會議秘書，我想總結一下今天關於「{topic}」的討論，但在生成過程中遇到了一些技術問題。根據我記錄的內容，我們討論了這個主題的多個方面，並達成了一些共識。感謝各位的參與和寶貴意見。"
+        
+        # 添加豬秘書的總結消息
+        await add_message(
+            conference_id,
+            MODERATOR_CONFIG["id"],
+            conclusion
+        )
+        
+        await asyncio.sleep(3)
+        
+        # 主席結束會議
+        if chair:
+            await add_message(
+                conference_id,
+                chair["id"],
+                f"感謝{MODERATOR_CONFIG['name']}的精彩總結，也感謝各位的積極參與。今天的會議到此結束，祝大家工作順利！"
+            )
+        else:
+            # 如果沒有主席，豬秘書自己結束會議
+            await add_message(
+                conference_id,
+                MODERATOR_CONFIG["id"],
+                f"以上就是今天會議的總結。感謝各位的積極參與。今天的會議到此結束，祝大家工作順利！"
+            )
+        
     except Exception as e:
-        logger.error(f"生成會議結論時出錯: {str(e)}")
-        conclusion = f"由於技術原因，無法生成完整會議結論。請檢查API設置。錯誤信息: {str(e)[:100]}"
-    
-    # 建立消息物件
-    message = {
-        "id": f"{conference_id}_conclusion",
-        "speakerId": secretary["id"],
-        "speakerName": secretary["name"],
-        "speakerTitle": secretary["title"],
-        "text": conclusion,
-        "timestamp": datetime.now().isoformat()
-    }
-    
-    # 儲存消息
-    conf["messages"].append(message)
-    conf["conclusion"] = conclusion
-    
-    # 通過WebSocket發送消息
-    await broadcast_message(conference_id, {
-        "type": MESSAGE_TYPES["new_message"],
-        "message": message,
-        "current_speaker": secretary["id"]
-    })
-    await broadcast_message(conference_id, {
-        "type": MESSAGE_TYPES["conclusion"],
-        "text": conclusion
-    })
+        logger.error(f"生成結論過程中發生錯誤: {str(e)}")
+        await add_message(
+            conference_id,
+            MODERATOR_CONFIG["id"],
+            f"感謝各位的參與。由於技術原因，我無法生成完整的會議總結。今天關於「{topic}」的會議到此結束，謝謝大家！"
+        )
 
 def get_round_topic(round_num: int, main_topic: str) -> str:
     """獲取每輪討論的具體主題"""
