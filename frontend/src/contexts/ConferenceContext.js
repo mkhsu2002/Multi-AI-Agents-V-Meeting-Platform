@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { MODERATOR_CONFIG, MESSAGE_TYPES } from '../config/agents';
 
 const ConferenceContext = createContext();
 
@@ -41,7 +42,7 @@ export const ConferenceProvider = ({ children }) => {
         console.log('收到WebSocket消息:', data);
         
         switch (data.type) {
-          case 'init':
+          case MESSAGE_TYPES.INIT:
             setMessages(data.messages || []);
             setConferenceStage(data.stage || 'waiting');
             setCurrentRound(data.current_round || 0);
@@ -49,25 +50,30 @@ export const ConferenceProvider = ({ children }) => {
             setIsLoading(false);
             break;
             
-          case 'new_message':
+          case MESSAGE_TYPES.NEW_MESSAGE:
             setMessages(prev => [...prev, data.message]);
             setCurrentSpeaker(data.current_speaker);
             break;
             
-          case 'stage_change':
+          case MESSAGE_TYPES.STAGE_CHANGE:
             setConferenceStage(data.stage);
             break;
             
-          case 'round_update':
+          case MESSAGE_TYPES.ROUND_UPDATE:
             setCurrentRound(data.round);
             break;
             
-          case 'round_completed':
+          case MESSAGE_TYPES.ROUND_COMPLETED:
             // 當一輪討論完成時，可能需要在UI上提示用戶
             console.log('當前輪次討論已完成');
             break;
             
-          case 'error':
+          case MESSAGE_TYPES.CONCLUSION:
+            // 處理會議結論
+            setConclusion(data.text);
+            break;
+            
+          case MESSAGE_TYPES.ERROR:
             setError(data.message);
             setIsLoading(false);
             break;
@@ -107,14 +113,7 @@ export const ConferenceProvider = ({ children }) => {
       const configWithModerator = {
         ...configData,
         participants: [
-          {
-            id: "moderator",
-            name: "會議主持人",
-            title: "AI會議助手",
-            personality: "專業、公正、有條理",
-            expertise: "會議協調與總結",
-            isActive: true
-          },
+          MODERATOR_CONFIG,
           ...configData.participants
         ]
       };
@@ -159,7 +158,7 @@ export const ConferenceProvider = ({ children }) => {
   // 進入下一輪討論
   const nextRound = () => {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'next_round' }));
+      socket.send(JSON.stringify({ type: MESSAGE_TYPES.NEXT_ROUND }));
     } else {
       setError('WebSocket連接已關閉，無法進入下一輪討論');
     }
@@ -168,7 +167,7 @@ export const ConferenceProvider = ({ children }) => {
   // 結束會議
   const endConference = () => {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'end_conference' }));
+      socket.send(JSON.stringify({ type: MESSAGE_TYPES.END_CONFERENCE }));
     } else {
       setError('WebSocket連接已關閉，無法結束會議');
     }

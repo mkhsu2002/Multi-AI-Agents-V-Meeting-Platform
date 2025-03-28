@@ -15,6 +15,7 @@ import json
 import uuid
 import time
 from starlette.websockets import WebSocketDisconnect
+from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLATES, ROUND_TOPICS, MESSAGE_TYPES
 
 # 載入環境變數
 load_dotenv()
@@ -137,17 +138,6 @@ class Message(BaseModel):
 # 內存存儲（在實際生產環境中應使用數據庫）
 active_conferences = {}
 connected_clients = {}
-
-# 角色提示詞
-ROLE_PROMPTS = {
-    "Pig Boss": "我是飛豬隊友 (FlyPig AI) 的領頭豬，我制定公司的宏偉藍圖，並帶領我們團隊一起翱翔。我的目標是團隊的成功，讓我們一起努力！我的命令就是方向。",
-    "Brainy Pig": "我是飛豬隊友 (FlyPig AI) 行銷策略的智囊，我的豬腦袋裡充滿了各種新奇點子，旨在提升我們團隊的品牌影響力。一起集思廣益，讓我們的飛豬形象深入人心！",
-    "Busy Pig": "我是飛豬隊友 (FlyPig AI) 業務拓展的先鋒，我的豬蹄將帶領我們團隊去開拓更廣闊的市場。團隊合作才能讓我們飛得更高更遠！讓我們一起努力拿下更多訂單！",
-    "Professor Pig": "我是飛豬隊友 (FlyPig AI) 技術創新的領頭豬，我的豬腦袋裝滿了最新的技術知識，不斷鑽研，力求為我們的團隊開發出更領先的產品。 團隊的智慧是無窮的，一起來攻克技術難關吧！",
-    "Calculator Pig": "我是飛豬隊友 (FlyPig AI) 的財政管家，我的豬算盤算得清清楚楚，確保我們團隊的每一分錢都用在刀刃上，為團隊的發展保駕護航。 團結一心，共同管理好我們的財富！",
-    "Caregiver Pig": "我是飛豬隊友 (FlyPig AI) 團隊的後勤部長，關心每一位隊友的成長和福祉。營造一個充滿活力和團隊精神的工作氛圍是我的責任。 讓我們互助互愛，共同打造一個強大的飛豬團隊！",
-    "Secretary Pig": "我是飛豬隊友 (FlyPig AI) 的會議記錄員，負責記錄會議的重點和決策，並整理會議總結，以便團隊成員更好地了解會議內容和行動方向。 團隊的溝通和效率，由我來記錄和整理！"
-}
 
 # API路由
 @app.get("/")
@@ -823,7 +813,10 @@ async def update_conference_stage(conference_id: str, stage: str):
     conf["stage"] = stage
     
     # 通過WebSocket通知客戶端
-    await broadcast_message(conference_id, {"type": "stage_change", "stage": stage})
+    await broadcast_message(conference_id, {
+        "type": MESSAGE_TYPES["stage_change"],
+        "stage": stage
+    })
     logger.info(f"Conference {conference_id} stage changed to {stage}")
 
 async def update_current_round(conference_id: str, round_num: int):
@@ -832,7 +825,10 @@ async def update_current_round(conference_id: str, round_num: int):
     conf["current_round"] = round_num
     
     # 通過WebSocket通知客戶端
-    await broadcast_message(conference_id, {"type": "round_update", "round": round_num})
+    await broadcast_message(conference_id, {
+        "type": MESSAGE_TYPES["round_update"],
+        "round": round_num
+    })
 
 # MVP階段使用模擬的回應，實際環境中使用OpenAI API
 async def generate_ai_response(prompt: str, participant_id: str, temperature: float = 0.7) -> str:
@@ -851,38 +847,38 @@ async def generate_ai_response(prompt: str, participant_id: str, temperature: fl
             # 嘗試使用新版API格式
             if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
                 response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model=AI_CONFIG["default_model"],
                     messages=[
-                        {"role": "system", "content": f"你是一個名為{participant_id}的虛擬角色。{role_prompt}請用繁體中文回答，風格幽默生動。"},
+                        {"role": "system", "content": AI_CONFIG["system_message_template"].format(participant_id=participant_id, role_prompt=role_prompt)},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=temperature,
-                    max_tokens=300
+                    max_tokens=AI_CONFIG["max_tokens"]
                 )
                 return response.choices[0].message.content.strip()
             else:
                 # 使用舊版API格式
                 response = client.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
+                    model=AI_CONFIG["default_model"],
                     messages=[
-                        {"role": "system", "content": f"你是一個名為{participant_id}的虛擬角色。{role_prompt}請用繁體中文回答，風格幽默生動。"},
+                        {"role": "system", "content": AI_CONFIG["system_message_template"].format(participant_id=participant_id, role_prompt=role_prompt)},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=temperature,
-                    max_tokens=300
+                    max_tokens=AI_CONFIG["max_tokens"]
                 )
                 return response.choices[0].message.content.strip()
         except AttributeError as attr_err:
             # 處理可能的API結構差異
             logger.warning(f"嘗試調用OpenAI API時發生屬性錯誤: {str(attr_err)}")
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+                model=AI_CONFIG["default_model"],
                 messages=[
-                    {"role": "system", "content": f"你是一個名為{participant_id}的虛擬角色。{role_prompt}請用繁體中文回答，風格幽默生動。"},
+                    {"role": "system", "content": AI_CONFIG["system_message_template"].format(participant_id=participant_id, role_prompt=role_prompt)},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=temperature,
-                max_tokens=300
+                max_tokens=AI_CONFIG["max_tokens"]
             )
             
             if hasattr(response.choices[0], 'message'):
@@ -915,7 +911,11 @@ async def generate_introductions(conference_id: str):
             continue
         
         # 構建提示
-        prompt = f"你是{participant['name']}（{participant['title']}），請你用繁體中文做一個簡短的自我介紹，提到你的角色和職責。然後，針對會議主題「{topic}」，簡短表達你的第一印象或初步想法，不超過100字。"
+        prompt = PROMPT_TEMPLATES["introduction"].format(
+            name=participant['name'],
+            title=participant['title'],
+            topic=topic
+        )
         
         # 生成回應
         response = await generate_ai_response(prompt, participant["id"], participant.get("temperature", 0.7))
@@ -963,7 +963,13 @@ async def run_discussion_round(conference_id: str, round_num: int):
     round_topic = get_round_topic(round_num, topic)
     
     # 主席開場白
-    chair_prompt = f"你是會議主席{chair['name']}（{chair['title']}）。現在是第{round_num}輪討論，主題是「{topic}」。請你用繁體中文給出本輪討論的開場白，說明本輪將討論的內容：{round_topic}，並邀請下一位參與者發言，不超過100字。"
+    chair_prompt = PROMPT_TEMPLATES["chair_opening"].format(
+        name=chair['name'],
+        title=chair['title'],
+        round_num=round_num,
+        topic=topic,
+        round_topic=round_topic
+    )
     chair_response = await generate_ai_response(chair_prompt, chair["id"], chair.get("temperature", 0.7))
     
     chair_message = {
@@ -980,7 +986,7 @@ async def run_discussion_round(conference_id: str, round_num: int):
     
     # 通過WebSocket發送消息
     await broadcast_message(conference_id, {
-        "type": "new_message",
+        "type": MESSAGE_TYPES["new_message"],
         "message": chair_message,
         "current_speaker": chair["id"]
     })
@@ -998,15 +1004,13 @@ async def run_discussion_round(conference_id: str, round_num: int):
         context = "\n".join(previous_messages)
         
         # 構建提示
-        prompt = f"""
-        你是{participant['name']}（{participant['title']}）。
-        當前會議主題是「{topic}」，當前討論的重點是：{round_topic}
-        
-        以下是之前的對話：
-        {context}
-        
-        請你根據自己的角色和專業領域，用繁體中文對當前討論主題發表看法，並可回應之前其他人的意見。回答不超過150字。
-        """
+        prompt = PROMPT_TEMPLATES["discussion"].format(
+            name=participant['name'],
+            title=participant['title'],
+            topic=topic,
+            round_topic=round_topic,
+            context=context
+        )
         
         # 生成回應
         response = await generate_ai_response(prompt, participant["id"], participant.get("temperature", 0.7))
@@ -1026,13 +1030,18 @@ async def run_discussion_round(conference_id: str, round_num: int):
         
         # 通過WebSocket發送消息
         await broadcast_message(conference_id, {
-            "type": "new_message",
+            "type": MESSAGE_TYPES["new_message"],
             "message": message,
             "current_speaker": participant["id"]
         })
         
         # 模擬打字延遲
         await asyncio.sleep(4)
+
+    await broadcast_message(conference_id, {
+        "type": MESSAGE_TYPES["round_completed"],
+        "round": round_num
+    })
 
 async def generate_conclusion(conference_id: str):
     """生成會議結論"""
@@ -1057,14 +1066,9 @@ async def generate_conclusion(conference_id: str):
     context = "\n".join(all_messages[-20:])  # 最後20條消息
     
     # 構建提示
-    prompt = f"""
-    你是會議秘書{secretary['name']}。會議主題是「{topic}」，經過了{config.get("rounds", 3)}輪討論。
-    
-    以下是會議中的部分發言摘要：
-    {context}
-    
-    請你用繁體中文總結整場會議的重點，並提出5點關鍵結論或行動項目。格式為帶編號的列表，總字數不超過300字。
-    """
+    prompt = PROMPT_TEMPLATES["conclusion"].format(
+        context=context
+    )
     
     try:
         # 生成總結
@@ -1134,24 +1138,20 @@ async def generate_conclusion(conference_id: str):
     
     # 通過WebSocket發送消息
     await broadcast_message(conference_id, {
-        "type": "new_message",
+        "type": MESSAGE_TYPES["new_message"],
         "message": message,
         "current_speaker": secretary["id"]
     })
-    await broadcast_message(conference_id, {"type": "conclusion", "text": conclusion})
+    await broadcast_message(conference_id, {
+        "type": MESSAGE_TYPES["conclusion"],
+        "text": conclusion
+    })
 
 def get_round_topic(round_num: int, main_topic: str) -> str:
     """獲取每輪討論的具體主題"""
-    topics = {
-        1: f"{main_topic}的主要優勢和機會",
-        2: f"{main_topic}可能面臨的挑戰和風險",
-        3: f"{main_topic}的市場潛力和客戶需求",
-        4: f"{main_topic}所需的資源和預算",
-        5: f"實施{main_topic}的時間表和里程碑",
-        6: f"{main_topic}的具體行動計劃"
-    }
-    
-    return topics.get(round_num, f"{main_topic}的進一步討論要點")
+    if round_num in ROUND_TOPICS:
+        return ROUND_TOPICS[round_num].format(topic=main_topic)
+    return f"{main_topic}的進一步討論要點"
 
 # 原生WebSocket端點保持不變
 @app.websocket("/ws/conference/{conference_id}")
@@ -1163,7 +1163,10 @@ async def websocket_endpoint(websocket: WebSocket, conference_id: str):
     
     if conference_id not in active_conferences:
         logger.warning(f"客戶端嘗試連接不存在的會議 {conference_id}")
-        await websocket.send_json({"type": "error", "message": "會議不存在"})
+        await websocket.send_json({
+            "type": MESSAGE_TYPES["error"],
+            "message": "會議不存在"
+        })
         await websocket.close()
         return
     
@@ -1176,7 +1179,7 @@ async def websocket_endpoint(websocket: WebSocket, conference_id: str):
     # 發送現有消息和狀態
     conference = active_conferences[conference_id]
     init_data = {
-        "type": "init",
+        "type": MESSAGE_TYPES["init"],
         "messages": conference.get("messages", []),
         "stage": conference.get("stage", "waiting"),
         "current_round": conference.get("current_round", 0),
@@ -1261,9 +1264,9 @@ async def add_message(conference_id: str, speaker_id: str, text: str):
     if not participant:
         if speaker_id == "moderator":
             participant = {
-                "id": "moderator",
-                "name": "會議主持人",
-                "title": "AI會議助手"
+                "id": MODERATOR_CONFIG["id"],
+                "name": MODERATOR_CONFIG["name"],
+                "title": MODERATOR_CONFIG["title"]
             }
         else:
             logger.error(f"找不到ID為 {speaker_id} 的參與者")
@@ -1284,7 +1287,7 @@ async def add_message(conference_id: str, speaker_id: str, text: str):
     conference["messages"].append(message)
     
     await broadcast_message(conference_id, {
-        "type": "new_message",
+        "type": MESSAGE_TYPES["new_message"],
         "message": message,
         "current_speaker": speaker_id
     })
