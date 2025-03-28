@@ -1,8 +1,9 @@
 # 飛豬隊友 AI 虛擬會議系統 (v1.1)
 # FlyPig AI Virtual Conference System (v1.1)
 
-[English Description](#english-description) | [繁體中文說明](#繁體中文說明)
+[English Description](#english-description) | [繁體中文](#繁體中文說明)
 
+<a name="繁體中文說明"></a>
 ## 繁體中文說明
 
 基於 LLM 驅動的 Multi AI Agents Group Meeting，允許多個智能體進行互動式討論，模擬商務會議、創意腦力激盪或學術辯論場景。首創具備 Web Base 即時視覺化完整呈現會議過程。 
@@ -194,6 +195,7 @@ uvicorn app.main:app --reload
 
 此要求旨在確保原始貢獻得到適當的認可，並促進開源社群的良好合作。
 
+<a name="english-description"></a>
 ## English Description
 
 FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeting platform that allows multiple AI agents to engage in interactive discussions, simulating business meetings, creative brainstorming sessions, or academic debates. It features a pioneering web-based real-time visualization of the entire meeting process.
@@ -319,7 +321,7 @@ Visit `http://localhost:8000/api-test` to open the API test page, which can be u
    python -m venv venv
    source venv/bin/activate  # Windows: venv\Scripts\activate
    pip install -r requirements.txt
-   cp .env.example .env  # Remember to edit the .env file to add your API key
+   cp .env.example .env
    python run.py  # Or use uvicorn app.main:app --reload
    ```
 
