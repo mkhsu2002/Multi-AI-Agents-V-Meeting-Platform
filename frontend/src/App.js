@@ -56,6 +56,35 @@ function App() {
     </nav>
   );
 
+  const Footer = () => (
+    <footer className="p-4 bg-primary text-white text-center mt-8">
+      <div className="container mx-auto">
+        <div className="mb-2">飛豬隊友 AI 虛擬會議系統 v1.1</div>
+        <div className="flex justify-center items-center space-x-4">
+          <a 
+            href="https://buymeacoffee.com/mkhsu2002w" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 transition-colors duration-300"
+          >
+            <span role="img" aria-label="coffee" className="mr-2">☕</span>
+            買杯咖啡支持我們
+          </a>
+          <a 
+            href="https://github.com/mkhsu2002/TinyPigTroupe" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center bg-gray-700 px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors duration-300"
+          >
+            <span role="img" aria-label="github" className="mr-2">⭐</span>
+            GitHub
+          </a>
+        </div>
+        <div className="mt-2 text-sm opacity-80">© 2023-2025 FlyPig AI</div>
+      </div>
+    </footer>
+  );
+
   return (
     <Router>
       <div className="App min-h-screen bg-background text-text flex flex-col">
@@ -67,6 +96,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
+        <Footer />
       </div>
     </Router>
   );

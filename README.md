@@ -166,6 +166,20 @@ uvicorn app.main:app --reload
 
 我們熱切歡迎各領域的專家和開發者加入本項目！無論您擅長前端開發、後端架構、UI設計、提示詞工程或是LLM應用，都能在這裡發揮您的才能。如果您有任何想法或建議，請隨時提交 Pull Request 或提出 Issue。
 
+## 支持我們
+
+如果您覺得這個項目有幫助，可以請我們喝杯咖啡來支持我們的開發工作！
+
+<a href="https://buymeacoffee.com/mkhsu2002w" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >
+</a>
+
+您的捐贈將用於：
+- 持續開發與功能增強
+- API費用支付
+- 系統優化與維護
+- 社群建設與支持
+
 ## 許可證: MIT License
 
 附加條款：為了尊重本專案的原始貢獻者，我們要求所有基於本專案的改版或衍生作品，在其文件或程式碼註解中明確標記 FlyPig AI。例如：
