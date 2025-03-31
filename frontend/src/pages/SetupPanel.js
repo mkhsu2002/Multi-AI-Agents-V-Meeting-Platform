@@ -1,12 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchScenarios } from '../utils/api';
 
 const SetupPanel = ({ initialConfig, onStart }) => {
   const [config, setConfig] = useState(initialConfig);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scenarios, setScenarios] = useState({});
+  const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
+
+  // 在組件加載時獲取情境模組列表
+  useEffect(() => {
+    const loadScenarios = async () => {
+      setIsLoadingScenarios(true);
+      try {
+        const data = await fetchScenarios();
+        setScenarios(data);
+        // 如果初始配置中沒有指定情境，設置為預設情境
+        if (!config.scenario && data.default) {
+          setConfig({ ...config, scenario: data.default });
+        }
+      } catch (error) {
+        console.error('獲取情境模組失敗:', error);
+      } finally {
+        setIsLoadingScenarios(false);
+      }
+    };
+
+    loadScenarios();
+  }, []);
 
   // 處理主題變更
   const handleTopicChange = (e) => {
     setConfig({ ...config, topic: e.target.value });
+  };
+
+  // 處理附註補充資料變更
+  const handleAdditionalNotesChange = (e) => {
+    setConfig({ ...config, additional_notes: e.target.value });
   };
 
   // 處理回合數量變更
@@ -20,6 +49,11 @@ const SetupPanel = ({ initialConfig, onStart }) => {
   // 處理主席變更
   const handleChairChange = (e) => {
     setConfig({ ...config, chair: e.target.value });
+  };
+
+  // 處理情境模組變更
+  const handleScenarioChange = (e) => {
+    setConfig({ ...config, scenario: e.target.value });
   };
 
   // 處理參與者活躍狀態變更
@@ -96,6 +130,20 @@ const SetupPanel = ({ initialConfig, onStart }) => {
           </p>
         </div>
         
+        {/* 附註補充資料 */}
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-3">附註補充資料</h2>
+          <textarea
+            value={config.additional_notes || ''}
+            onChange={handleAdditionalNotesChange}
+            placeholder="輸入會議的補充背景資料、參考數據或重要考量..."
+            className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-primary focus:border-primary"
+          />
+          <p className="text-sm text-gray-500 mt-2">
+            添加任何您希望AI角色考慮的附加資料，例如市場數據、關鍵要求或背景信息。這些資料將被納入會議討論中。
+          </p>
+        </div>
+        
         {/* 會議參數設置 */}
         <div className="grid md:grid-cols-2 gap-6 mb-6">
           <div>
@@ -131,6 +179,29 @@ const SetupPanel = ({ initialConfig, onStart }) => {
                 </select>
                 <p className="text-sm text-gray-500 mt-1">主席將引導討論進程</p>
               </div>
+
+              {/* 新增：情境模組選擇 */}
+              <div>
+                <label className="block mb-1">研討情境模式</label>
+                <select
+                  value={config.scenario || ''}
+                  onChange={handleScenarioChange}
+                  className="w-full p-2 border rounded-lg"
+                  disabled={isLoadingScenarios}
+                >
+                  {isLoadingScenarios ? (
+                    <option>載入中...</option>
+                  ) : (
+                    scenarios.scenarios && 
+                    Object.entries(scenarios.scenarios).map(([id, scenario]) => (
+                      <option key={id} value={id}>
+                        {scenario.name} - {scenario.description}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="text-sm text-gray-500 mt-1">選擇會議情境模式，以優化對話邏輯</p>
+              </div>
             </div>
           </div>
           
@@ -165,6 +236,16 @@ const SetupPanel = ({ initialConfig, onStart }) => {
             </p>
           </div>
         </div>
+        
+        {/* 情境模組說明 */}
+        {scenarios.selection_guide && (
+          <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+            <h2 className="text-xl font-semibold mb-2">研討情境說明</h2>
+            <div className="whitespace-pre-line text-sm">
+              {scenarios.selection_guide}
+            </div>
+          </div>
+        )}
         
         {/* 預設會議說明 */}
         <div className="mb-6 bg-gray-50 p-4 rounded-lg">

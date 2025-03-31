@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useConference } from '../contexts/ConferenceContext';
 import PigAvatar from '../components/PigAvatar';
 import MessageBubble from '../components/MessageBubble';
+import { fetchScenarios } from '../utils/api';
 
 const ConferenceRoom = ({ config, onBackToSetup }) => {
   const {
@@ -13,12 +14,33 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
     conclusion,
     error,
     startConference,
+    pauseConference,
+    resumeConference,
     exportRecord
   } = useConference();
   
   const messagesEndRef = useRef(null);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [localError, setLocalError] = useState(null);
+  const [scenarioInfo, setScenarioInfo] = useState(null);
+  
+  // 載入情境模組信息
+  useEffect(() => {
+    const loadScenarioInfo = async () => {
+      if (config.scenario) {
+        try {
+          const data = await fetchScenarios();
+          if (data.scenarios && data.scenarios[config.scenario]) {
+            setScenarioInfo(data.scenarios[config.scenario]);
+          }
+        } catch (error) {
+          console.error('獲取情境模組信息失敗:', error);
+        }
+      }
+    };
+    
+    loadScenarioInfo();
+  }, [config.scenario]);
   
   // 開始會議
   useEffect(() => {
@@ -61,6 +83,8 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
         return '會議總結';
       case 'ended':
         return '會議已結束';
+      case 'paused':
+        return '會議已暫停';
       default:
         return '飛豬隊友 AI 虛擬會議';
     }
@@ -76,7 +100,14 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
         <div>
           <h1 className="text-2xl font-bold text-primary">飛豬隊友 AI 虛擬會議</h1>
           <p className="text-lg">主題：{config.topic || '未指定主題'}</p>
-          <p className="text-sm text-gray-600">{getStageTitle()}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-600">{getStageTitle()}</p>
+            {scenarioInfo && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {scenarioInfo.name} 模式
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <button 
@@ -86,6 +117,28 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
           >
             {displayError ? '返回重試' : '返回設置'}
           </button>
+          
+          {/* 只在會議進行中顯示暫停/恢復按鈕 */}
+          {conferenceStage !== 'waiting' && conferenceStage !== 'ended' && (
+            conferenceStage === 'paused' ? (
+              <button 
+                onClick={resumeConference}
+                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-200"
+                disabled={isLoading}
+              >
+                繼續會議
+              </button>
+            ) : (
+              <button 
+                onClick={pauseConference}
+                className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition duration-200"
+                disabled={isLoading}
+              >
+                暫停會議
+              </button>
+            )
+          )}
+          
           <button 
             onClick={exportRecord}
             className="px-4 py-2 bg-secondary text-white rounded-md hover:bg-opacity-90 transition duration-200"
@@ -116,6 +169,14 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
             </div>
           </div>
           <p className="ml-3 text-lg">載入中...正在準備會議</p>
+        </div>
+      )}
+      
+      {/* 情境模組信息 */}
+      {scenarioInfo && conferenceStage === 'waiting' && !displayError && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-4">
+          <p className="font-bold">{scenarioInfo.name} 情境模式</p>
+          <p>{scenarioInfo.description}</p>
         </div>
       )}
       
