@@ -1,4 +1,4 @@
-# FlyPig AI Virtual Conference System (v1.5)
+# FlyPig AI Virtual Conference System (v2.0)
 
 [![YouTube Video Presentation](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
@@ -8,20 +8,21 @@ FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeti
 
 ## Version Information
 
-Current Version: v1.5
+Current Version: v2.0
 Major Updates:
+- Added meeting pause/resume functionality for better user control
+- Implemented a new supplementary notes field for additional context
+- Enhanced meeting record display to include meeting mode information
+- Fixed issue with agents speaking consecutively in debate mode
+- Improved WebSocket connection stability and error handling
+- Decoupled temperature settings from conference mode for more flexibility
+
+Previous Version (v1.5):
 - Replaced the moderator with an AI Secretary role for improved meeting flow
 - Enhanced the chairman role to propose 3 related topics at the beginning of the meeting
 - Improved the discussion process with consensus checking for each round
 - Fixed the issue of moderator speaking twice in the introduction phase
 - Optimized role clarity between the chairman and the secretary
-
-Previous Version (v1.2):
-- Added comprehensive Agent Management interface for creating, editing, and managing AI agents
-- Implemented agent import/export functionality with bulk operations support
-- Added role prompts to influence AI agent behavior and response styles
-- Enhanced data synchronization between pages for better state management
-- Fixed agent name display issues and improved UI consistency
 
 ## Key Features
 
