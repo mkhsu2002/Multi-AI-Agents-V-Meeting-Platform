@@ -15,7 +15,9 @@ import json
 import uuid
 import time
 from starlette.websockets import WebSocketDisconnect
-from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLATES, ROUND_TOPICS, MESSAGE_TYPES
+from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLATES, ROUND_TOPICS, MESSAGE_TYPES, SCENARIO_INFO, DEFAULT_SCENARIO
+# 引入情境模組配置
+from app.config_scenarios import DISCUSSION_SCENARIOS, SCENARIO_SELECTION_GUIDE
 
 # 載入環境變數
 load_dotenv()
@@ -91,21 +93,32 @@ def get_openai_client():
     logger.info(f"正在使用 API 金鑰創建客戶端 (已遮蔽: {masked_key})")
     
     try:
+        # 首先檢查OpenAI版本
+        openai_version = getattr(openai, "__version__", "未知")
+        logger.info(f"OpenAI庫版本: {openai_version}")
+        
         # 首先嘗試使用現代的 OpenAI 客戶端
         try:
+            logger.info("嘗試創建現代 OpenAI 客戶端")
             client = openai.OpenAI(api_key=openai_api_key)
-            logger.info("成功創建現代 OpenAI 客戶端")
-            return client
-        except (TypeError, ValueError, ImportError) as e:
+            
+            # 驗證客戶端可用性
+            if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
+                logger.info("成功創建現代 OpenAI 客戶端")
+                return client
+            else:
+                logger.warning("現代客戶端創建成功但結構不符合預期")
+        except (TypeError, ValueError, ImportError, AttributeError) as e:
             logger.warning(f"使用現代客戶端失敗: {str(e)}，嘗試傳統方式")
             
         # 如果現代客戶端失敗，嘗試使用傳統全局配置
         try:
             # 為傳統方法設置 API 金鑰
+            logger.info("嘗試設置全局 API 金鑰")
             openai.api_key = openai_api_key
             
             # 檢查是否支持舊式 API
-            if hasattr(openai, 'ChatCompletion') and callable(getattr(openai.ChatCompletion, 'create', None)):
+            if hasattr(openai, 'ChatCompletion'):
                 # 測試客戶端有效性
                 logger.info("使用傳統 OpenAI 客戶端 (全局配置)")
                 return openai
@@ -119,6 +132,7 @@ def get_openai_client():
             
     except Exception as e:
         logger.error(f"創建 OpenAI 客戶端時發生未預期的錯誤: {str(e)}")
+        logger.exception("OpenAI客戶端創建過程中發生異常")
         return None
 
 # 數據模型
@@ -140,6 +154,8 @@ class ConferenceConfig(BaseModel):
     rounds: int = Field(ge=1, le=20, default=3)
     language: str = "繁體中文"
     conclusion: bool = True
+    scenario: Optional[str] = DEFAULT_SCENARIO  # 新增：研討情境類型，預設為商務會議
+    additional_notes: Optional[str] = ""  # 新增：附註補充資料
     
     class Config:
         # 允許額外的字段
@@ -447,7 +463,7 @@ async def test_api():
                 # 簡單測試調用
                 logger.info("執行 OpenAI API 連接測試")
                 
-                if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
+                if hasattr(client, 'chat') and hasattr(client.chat, 'completions') and callable(getattr(client.chat.completions, 'create', None)):
                     # 使用新版 API
                     logger.info("使用新版 API 格式進行測試調用")
                     response = client.chat.completions.create(
@@ -562,7 +578,7 @@ async def update_api_key(request: ApiKeyUpdateRequest):
         logger.info("測試新 API 金鑰與 OpenAI 服務的連線")
         try:
             # 檢查客戶端類型並使用適當的 API 調用
-            if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
+            if hasattr(client, 'chat') and hasattr(client.chat, 'completions') and callable(getattr(client.chat.completions, 'create', None)):
                 # 使用新版 API
                 logger.info("使用新版 API 格式進行測試調用")
                 response = client.chat.completions.create(
@@ -655,7 +671,7 @@ async def test_message(request: TestMessageRequest):
         
         # 調用OpenAI API
         try:
-            if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
+            if hasattr(client, 'chat') and hasattr(client.chat, 'completions') and callable(getattr(client.chat.completions, 'create', None)):
                 # 嘗試新版 API
                 logger.info("使用新版 API 格式發送請求")
                 response = client.chat.completions.create(
@@ -723,61 +739,63 @@ async def test_message(request: TestMessageRequest):
             "timestamp": datetime.now().isoformat()
         }
 
+@app.get("/api/scenarios")
+def get_scenarios():
+    """獲取可用的研討情境模組列表"""
+    return {
+        "scenarios": SCENARIO_INFO,
+        "default": DEFAULT_SCENARIO,
+        "selection_guide": SCENARIO_SELECTION_GUIDE
+    }
+
 @app.post("/api/conference/start")
 async def start_conference(config: ConferenceConfig, background_tasks: BackgroundTasks):
-    try:
-        # 記錄請求資料內容
-        logger.info(f"接收到會議配置請求: {config.json()}")
-        
-        # 生成會議ID
-        conference_id = str(uuid.uuid4())
-        
-        # 驗證配置
-        active_participants = [p for p in config.participants if p.isActive]
-        logger.info(f"活躍參與者數量: {len(active_participants)}")
-        
-        if len(active_participants) < 2:
-            raise HTTPException(status_code=400, detail="至少需要2位參與者才能開始會議")
-        
-        if not config.topic:
-            raise HTTPException(status_code=400, detail="會議主題不能為空")
-        
-        # 儲存會議配置
-        active_conferences[conference_id] = {
-            "id": conference_id,
-            "config": config.dict(),
-            "messages": [],
-            "stage": "waiting",
-            "current_round": 0,
-            "start_time": datetime.now().isoformat()
+    """開始一個新的會議"""
+    conference_id = str(uuid.uuid4())
+    
+    # 驗證情境模組
+    if config.scenario and config.scenario not in DISCUSSION_SCENARIOS:
+        # 如果指定的情境不存在，使用預設情境
+        logger.warning(f"指定的情境模組 '{config.scenario}' 不存在，使用預設情境 '{DEFAULT_SCENARIO}'")
+        config.scenario = DEFAULT_SCENARIO
+    
+    # 初始化會議狀態
+    active_conferences[conference_id] = {
+        "id": conference_id,
+        "topic": config.topic,
+        "participants": {p.id: p.dict() for p in config.participants},
+        "messages": [],
+        "stage": "waiting",  # 初始階段：等待
+        "rounds": config.rounds,
+        "current_round": 0,
+        "language": config.language,
+        "conclusion": config.conclusion,
+        "scenario": config.scenario,  # 新增：記錄使用的情境模組
+        "additional_notes": config.additional_notes,  # 新增：附註補充資料
+        "start_time": datetime.now().isoformat(),
+        "connected_clients": [],  # 修改為列表而非字典
+        "config": {  # 存儲完整配置
+            "topic": config.topic,
+            "participants": [p.dict() for p in config.participants],
+            "rounds": config.rounds,
+            "language": config.language,
+            "conclusion": config.conclusion,
+            "scenario": config.scenario,
+            "additional_notes": config.additional_notes  # 新增：附註補充資料
         }
-        
-        # 記錄儲存成功
-        logger.info(f"成功創建會議 {conference_id}")
-        
-        # 在背景執行會議流程
-        background_tasks.add_task(run_conference, conference_id)
-        
-        return {
-            "success": True, 
-            "conferenceId": conference_id,
-            "message": "會議已開始初始化"
-        }
-    except ValidationError as ve:
-        # 記錄 Pydantic 驗證錯誤
-        logger.error(f"請求資料驗證失敗: {str(ve)}")
-        return {
-            "success": False,
-            "conferenceId": "",
-            "error": f"請求資料格式不正確: {str(ve)}"
-        }
-    except Exception as e:
-        logger.error(f"啟動會議失敗: {str(e)}")
-        return {
-            "success": False,
-            "conferenceId": "",
-            "error": f"啟動會議失敗: {str(e)}"
-        }
+    }
+    
+    # 添加主持人（秘書）
+    active_conferences[conference_id]["participants"][MODERATOR_CONFIG["id"]] = MODERATOR_CONFIG
+    
+    # 創建WebSocket連接管理器
+    connected_clients[conference_id] = []
+    
+    # 在背景任務中啟動會議
+    background_tasks.add_task(run_conference, conference_id)
+    
+    # 返回結果，增加success字段以兼容前端
+    return {"conference_id": conference_id, "status": "created", "success": True}
 
 @app.get("/api/conference/{conference_id}")
 def get_conference(conference_id: str):
@@ -800,30 +818,63 @@ def get_conference_messages(conference_id: str, limit: int = 50, offset: int = 0
 # 會議執行邏輯
 async def run_conference(conference_id: str):
     """執行會議的主要邏輯"""
-    conf = active_conferences[conference_id]
-    config = conf["config"]
-    
-    # 更新狀態為介紹階段
-    await update_conference_stage(conference_id, "introduction")
-    
-    # 生成並發送自我介紹
-    await generate_introductions(conference_id)
-    
-    # 進入討論階段
-    await update_conference_stage(conference_id, "discussion")
-    
-    # 進行多輪討論
-    for round_num in range(1, config["rounds"] + 1):
-        await run_discussion_round(conference_id, round_num)
-    
-    # 生成結論
-    await update_conference_stage(conference_id, "conclusion")
-    await generate_conclusion(conference_id)
-    
-    # 標記會議結束
-    await update_conference_stage(conference_id, "ended")
-    
-    logger.info(f"Conference {conference_id} completed")
+    try:
+        logger.info(f"開始執行會議 {conference_id} 的主要邏輯")
+        
+        if conference_id not in active_conferences:
+            logger.error(f"無法執行不存在的會議: {conference_id}")
+            return
+            
+        conf = active_conferences[conference_id]
+        config = conf["config"]
+        
+        # 更新狀態為介紹階段
+        await update_conference_stage(conference_id, "introduction")
+        
+        # 生成並發送自我介紹
+        try:
+            await generate_introductions(conference_id)
+        except Exception as e:
+            logger.error(f"生成自我介紹時出錯: {str(e)}")
+            logger.exception("生成自我介紹過程中發生異常")
+        
+        # 進入討論階段
+        await update_conference_stage(conference_id, "discussion")
+        
+        # 進行多輪討論
+        for round_num in range(1, config["rounds"] + 1):
+            try:
+                await run_discussion_round(conference_id, round_num)
+            except Exception as e:
+                logger.error(f"執行第{round_num}輪討論時出錯: {str(e)}")
+                logger.exception(f"執行第{round_num}輪討論過程中發生異常")
+        
+        # 生成結論
+        await update_conference_stage(conference_id, "conclusion")
+        try:
+            await generate_conclusion(conference_id)
+        except Exception as e:
+            logger.error(f"生成會議結論時出錯: {str(e)}")
+            logger.exception("生成會議結論過程中發生異常")
+        
+        # 標記會議結束
+        await update_conference_stage(conference_id, "ended")
+        
+        logger.info(f"會議 {conference_id} 已成功完成")
+    except Exception as e:
+        logger.error(f"執行會議 {conference_id} 過程中發生錯誤: {str(e)}")
+        logger.exception(f"執行會議過程中發生未捕獲的異常")
+        
+        # 嘗試將會議標記為錯誤狀態
+        try:
+            if conference_id in active_conferences:
+                active_conferences[conference_id]["stage"] = "error"
+                await broadcast_message(conference_id, {
+                    "type": MESSAGE_TYPES["error"],
+                    "message": "會議執行過程中發生錯誤，請重新創建會議。"
+                })
+        except:
+            pass
 
 async def update_conference_stage(conference_id: str, stage: str):
     """更新會議階段並通知客戶端"""
@@ -849,63 +900,86 @@ async def update_current_round(conference_id: str, round_num: int):
     })
 
 # MVP階段使用模擬的回應，實際環境中使用OpenAI API
-async def generate_ai_response(prompt: str, participant_id: str, temperature: float = 0.7) -> str:
-    """使用OpenAI生成回應"""
+async def generate_ai_response(prompt: str, participant_id: str, conference_id: str = None, temperature: float = 0.7) -> str:
+    """生成AI回應"""
     try:
-        # 檢查API密鑰是否已配置
         client = get_openai_client()
         if not client:
-            logger.warning("未設置OpenAI API密鑰，使用預設回應")
-            return f"這是一個預設回應，因為未配置OpenAI API。我是{participant_id}。"
+            logger.error("未能獲取OpenAI客戶端，無法生成回應")
+            return "很抱歉，AI服務當前不可用。請檢查API金鑰設置。"
         
-        # 構建角色提示詞
+        # 獲取角色提示詞
         role_prompt = ROLE_PROMPTS.get(participant_id, "")
         
-        try:
-            # 嘗試使用新版API格式
-            if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
+        # 獲取情境相關系統提示詞（如果有）
+        scenario_prompt = ""
+        if conference_id and conference_id in active_conferences:
+            scenario_id = active_conferences[conference_id].get("scenario")
+            if scenario_id and scenario_id in DISCUSSION_SCENARIOS:
+                scenario_prompt = DISCUSSION_SCENARIOS[scenario_id].get("system_prompt", "")
+        
+        # 組合系統提示詞
+        system_message = AI_CONFIG["system_message_template"].format(
+            participant_id=participant_id, 
+            role_prompt=role_prompt
+        )
+        
+        # 如果有情境系統提示詞，附加到系統消息中
+        if scenario_prompt:
+            system_message += f"\n\n{scenario_prompt}"
+
+        # 準備消息
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ]
+        
+        logger.info(f"嘗試生成AI回應，參與者ID: {participant_id}, 溫度: {temperature}")
+        
+        # 檢查客戶端類型
+        if hasattr(client, 'chat') and hasattr(client.chat, 'completions'):
+            # 使用現代OpenAI客戶端
+            logger.info("使用現代OpenAI客戶端API調用")
+            try:
                 response = client.chat.completions.create(
                     model=AI_CONFIG["default_model"],
-                    messages=[
-                        {"role": "system", "content": AI_CONFIG["system_message_template"].format(participant_id=participant_id, role_prompt=role_prompt)},
-                        {"role": "user", "content": prompt}
-                    ],
+                    messages=messages,
                     temperature=temperature,
                     max_tokens=AI_CONFIG["max_tokens"]
                 )
                 return response.choices[0].message.content.strip()
-            else:
-                # 使用舊版API格式
-                response = client.ChatCompletion.create(
-                    model=AI_CONFIG["default_model"],
-                    messages=[
-                        {"role": "system", "content": AI_CONFIG["system_message_template"].format(participant_id=participant_id, role_prompt=role_prompt)},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=temperature,
-                    max_tokens=AI_CONFIG["max_tokens"]
-                )
-                return response.choices[0].message.content.strip()
-        except AttributeError as attr_err:
-            # 處理可能的API結構差異
-            logger.warning(f"嘗試調用OpenAI API時發生屬性錯誤: {str(attr_err)}")
-            response = openai.ChatCompletion.create(
+            except AttributeError as ae:
+                logger.error(f"現代客戶端API屬性錯誤: {str(ae)}")
+                # 嘗試備用方法
+                if hasattr(client.chat.completions, 'create'):
+                    response = client.chat.completions.create(
+                        model=AI_CONFIG["default_model"],
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=AI_CONFIG["max_tokens"]
+                    )
+                    return response.choices[0].message.content.strip()
+                raise
+                
+        # 使用傳統OpenAI客戶端
+        elif hasattr(client, 'ChatCompletion'):
+            logger.info("使用傳統OpenAI客戶端API調用")
+            response = client.ChatCompletion.create(
                 model=AI_CONFIG["default_model"],
-                messages=[
-                    {"role": "system", "content": AI_CONFIG["system_message_template"].format(participant_id=participant_id, role_prompt=role_prompt)},
-                    {"role": "user", "content": prompt}
-                ],
+                messages=messages,
                 temperature=temperature,
                 max_tokens=AI_CONFIG["max_tokens"]
             )
-            
-            if hasattr(response.choices[0], 'message'):
-                return response.choices[0].message.content.strip()
-            return response.choices[0]['message']['content'].strip()
+            return response['choices'][0]['message']['content'].strip()
+        
+        else:
+            logger.error(f"無法識別的OpenAI客戶端類型: {type(client).__name__}")
+            return "很抱歉，AI服務當前遇到技術問題。無法識別API客戶端類型。"
             
     except Exception as e:
-        logger.error(f"OpenAI API調用失敗: {str(e)}")
-        return f"生成回應時發生錯誤。我是{participant_id}，我會繼續參與討論。錯誤訊息: {str(e)[:100]}"
+        logger.error(f"生成AI回應時發生錯誤: {str(e)}")
+        logger.exception("AI回應生成過程中發生異常")
+        return f"很抱歉，AI生成過程中發生錯誤。錯誤詳情: {str(e)[:100]}"
 
 async def generate_introductions(conference_id: str):
     """生成所有參與者的自我介紹"""
@@ -914,10 +988,19 @@ async def generate_introductions(conference_id: str):
     topic = config["topic"]
     
     # 豬秘書(作為主持人)介紹會議
+    additional_notes = conf.get("additional_notes", "")
+    intro_message = f"大家好，我是{MODERATOR_CONFIG['name']}，擔任今天會議的秘書。歡迎參加主題為「{topic}」的會議。"
+    
+    # 如果有附註資料，加入開場白
+    if additional_notes and additional_notes.strip():
+        intro_message += f"\n\n會議補充資料：{additional_notes}\n\n"
+    
+    intro_message += "現在我們將進行自我介紹，請各位簡單介紹自己並談談對今天主題的看法。自我介紹完成後，我們將由主席引導進入正式討論階段。"
+    
     await add_message(
         conference_id,
         MODERATOR_CONFIG["id"],
-        f"大家好，我是{MODERATOR_CONFIG['name']}，擔任今天會議的秘書。歡迎參加主題為「{topic}」的會議。現在我們將進行自我介紹，請各位簡單介紹自己並談談對今天主題的看法。自我介紹完成後，我們將由主席引導進入正式討論階段。"
+        intro_message
     )
     
     # 等待1秒使界面顯示更自然
@@ -933,14 +1016,19 @@ async def generate_introductions(conference_id: str):
             continue
             
         # 構建一般參與者的提示
-        prompt = PROMPT_TEMPLATES["introduction"].format(
+        intro_prompt = PROMPT_TEMPLATES["introduction"].format(
             name=participant['name'],
             title=participant['title'],
             topic=topic
         )
         
+        # 如果有附註資料，加入提示詞
+        additional_notes = conf.get("additional_notes", "")
+        if additional_notes and additional_notes.strip():
+            intro_prompt += f"\n\n補充資料：{additional_notes}"
+        
         # 生成回應
-        response = await generate_ai_response(prompt, participant["id"], participant.get("temperature", 0.7))
+        response = await generate_ai_response(intro_prompt, participant["id"], conference_id, participant.get("temperature", 0.7))
         
         # 添加消息並廣播
         await add_message(conference_id, participant["id"], response)
@@ -951,125 +1039,147 @@ async def generate_introductions(conference_id: str):
     # 注意：此處不再添加主持人的結束語，將直接由主席在第一輪討論中開場
 
 async def run_discussion_round(conference_id: str, round_num: int):
-    """執行一個討論回合"""
-    conf = active_conferences[conference_id]
-    config = conf["config"]
-    topic = config["topic"]
+    """執行一輪討論"""
+    if conference_id not in active_conferences:
+        logger.error(f"找不到會議 {conference_id}")
+        return
     
-    # 更新當前回合
+    conference = active_conferences[conference_id]
+    main_topic = conference["topic"]
+    
+    # 更新當前輪次
     await update_current_round(conference_id, round_num)
     
-    # 設置主席（如果有指定）或使用默認主席
-    chair = None
-    if "chair" in config and config["chair"]:
-        chair = next((p for p in config["participants"] if p["id"] == config["chair"]), None)
+    # 獲取輪次主題
+    round_topic = get_round_topic(round_num, main_topic, conference_id)
     
-    if not chair:
-        # 使用默認主席（選擇第一個非主持人的活躍參與者）
-        chair = next((p for p in config["participants"] 
-                     if p["isActive"] and p["id"] != MODERATOR_CONFIG["id"]), None)
-        
-        if not chair:
-            # 如果沒有其他適合的參與者，則使用一個默認設置
-            chair = {
-                "id": "default_chair",
-                "name": "默認主席",
-                "title": "會議引導者",
-                "temperature": 0.7
-            }
+    # 主席（秘書）開場
+    chair_id = MODERATOR_CONFIG["id"]
+    chair_name = MODERATOR_CONFIG["name"]
+    chair_title = MODERATOR_CONFIG["title"]
     
-    # 生成回合主題
-    round_topic = get_round_topic(round_num, topic)
-    
-    # 取得之前的消息作為上下文
-    previous_messages = []
-    if round_num > 1:
-        # 獲取最多10條之前的消息作為上下文
-        previous_messages = [m["text"] for m in conf["messages"][-min(10, len(conf["messages"])):]]
-    context = "\n".join(previous_messages)
-    
-    # 主席開場白
+    # 主席開場白提示詞
     chair_prompt = PROMPT_TEMPLATES["chair_opening"].format(
-        name=chair['name'],
-        title=chair['title'],
+        name=chair_name,
+        title=chair_title,
         round_num=round_num,
-        topic=topic,
-        round_topic=round_topic,
-        context=context if round_num > 1 else ""
+        topic=main_topic,
+        round_topic=round_topic
     )
     
-    chair_response = await generate_ai_response(chair_prompt, chair["id"], chair.get("temperature", 0.7))
+    # 如果有附註資料，加入提示詞
+    additional_notes = conference.get("additional_notes", "")
+    if additional_notes and additional_notes.strip():
+        chair_prompt += f"\n\n補充資料：{additional_notes}"
     
-    chair_message = {
-        "id": f"{conference_id}_round{round_num}_chair",
-        "speakerId": chair["id"],
-        "speakerName": chair["name"],
-        "speakerTitle": chair["title"],
-        "text": chair_response,
-        "timestamp": datetime.now().isoformat()
-    }
+    # 生成主席開場白
+    chair_text = await generate_ai_response(chair_prompt, chair_id, conference_id)
+    await add_message(conference_id, chair_id, chair_text)
     
-    # 儲存消息
-    conf["messages"].append(chair_message)
+    # 等待一下，讓客戶端有時間處理主席的消息
+    await asyncio.sleep(2)
     
-    # 通過WebSocket發送消息
-    await broadcast_message(conference_id, {
-        "type": MESSAGE_TYPES["new_message"],
-        "message": chair_message,
-        "current_speaker": chair["id"]
-    })
+    # 獲取參與者列表（排除主席秘書）
+    participants = [p for p_id, p in conference["participants"].items() if p_id != chair_id and p.get("isActive", True)]
     
-    # 模擬打字延遲
-    await asyncio.sleep(3)
+    # 獲取上一輪最後發言的參與者ID
+    last_speakers = []
+    if round_num > 1:
+        # 檢查上一輪的最後幾個發言者
+        messages = conference.get("messages", [])
+        if messages:
+            # 從後往前找最多3個不同的發言者
+            speaker_count = 0
+            for msg in reversed(messages):
+                speaker_id = msg.get("speakerId")
+                if speaker_id != chair_id and speaker_id not in last_speakers:
+                    last_speakers.append(speaker_id)
+                    speaker_count += 1
+                    if speaker_count >= 3:
+                        break
     
-    # 獲取所有活躍參與者，排除主席和豬秘書(主持人)
-    chair_id = chair["id"]
-    active_participants = [p for p in config["participants"] 
-                         if p["isActive"] 
-                         and p["id"] != chair_id
-                         and p["id"] != MODERATOR_CONFIG["id"]]
+    logger.info(f"上一輪最後發言者: {last_speakers}")
     
-    for idx, participant in enumerate(active_participants):
-        # 收集之前的消息作為上下文
-        previous_messages = [m["text"] for m in conf["messages"][-min(5, len(conf["messages"])):]]
-        context = "\n".join(previous_messages)
+    # 如果使用情境模組，應用角色權重
+    weights = {}
+    scenario_id = conference.get("scenario")
+    if scenario_id and scenario_id in DISCUSSION_SCENARIOS:
+        role_emphasis = DISCUSSION_SCENARIOS[scenario_id].get("role_emphasis", {})
+        for p in participants:
+            p_id = p["id"]
+            # 如果角色在權重表中，使用定義的權重；否則使用預設權重1.0
+            base_weight = role_emphasis.get(p_id, 1.0)
+            
+            # 如果是上一輪最後發言的參與者，降低權重
+            if p_id in last_speakers:
+                # 上一輪最後發言者的權重降低，越近發言的權重越低
+                position = last_speakers.index(p_id)
+                penalty = 0.5 - (position * 0.1)  # 最後發言者降低50%，倒數第二降低40%，倒數第三降低30%
+                weights[p_id] = base_weight * (1 - penalty)
+                logger.info(f"參與者 {p_id} 是上一輪發言者，權重從 {base_weight} 降低至 {weights[p_id]}")
+            else:
+                weights[p_id] = base_weight
+    
+    # 根據權重排序參與者（權重高的更有可能先發言）
+    # 如果沒有權重，則使用原始順序
+    if weights:
+        # 對權重進行輕微隨機化，避免完全固定的發言順序
+        import random
+        for p_id in weights:
+            weights[p_id] *= random.uniform(0.9, 1.1)
         
-        # 強調對之前發言的回應
-        modified_prompt = PROMPT_TEMPLATES["discussion"].format(
-            name=participant['name'],
-            title=participant['title'],
-            topic=topic,
+        participants.sort(key=lambda p: weights.get(p["id"], 1.0), reverse=True)
+    else:
+        # 沒有權重時，將上一輪最後發言的參與者排到後面
+        if last_speakers:
+            def get_participant_order(p):
+                if p["id"] in last_speakers:
+                    return last_speakers.index(p["id"]) - len(last_speakers)  # 負值，越靠後的發言者順序越小
+                return 0  # 非上一輪發言者
+            
+            participants.sort(key=get_participant_order, reverse=True)
+    
+    # 記錄本輪發言順序
+    speaker_order = [p["id"] for p in participants]
+    logger.info(f"輪次 {round_num} 發言順序: {speaker_order}")
+    
+    # 獲取之前的對話上下文（最後N條消息）
+    context_messages = conference["messages"][-10:]  # 取最後10條消息作為上下文
+    context = "\n".join([f"{msg['speakerName']}：{msg['text']}" for msg in context_messages])
+    
+    # 每位參與者依次發言
+    for participant in participants:
+        p_id = participant["id"]
+        p_name = participant["name"]
+        p_title = participant["title"]
+        
+        # 討論提示詞
+        additional_notes = conference.get("additional_notes", "")
+        discussion_prompt = PROMPT_TEMPLATES["discussion"].format(
+            name=p_name,
+            title=p_title,
+            topic=main_topic,
             round_topic=round_topic,
             context=context
         )
-        # 添加額外指示，確保發言的連貫性和相關性
-        modified_prompt += "\n請確保你的發言與之前的討論相關，特別是回應最近的1-2位發言者的觀點。避免泛泛而談，要有針對性地展開討論。"
         
-        # 生成回應
-        response = await generate_ai_response(modified_prompt, participant["id"], participant.get("temperature", 0.7))
+        # 如果有附註資料，加入提示詞
+        if additional_notes and additional_notes.strip():
+            discussion_prompt += f"\n\n補充資料：{additional_notes}"
         
-        # 建立消息物件
-        message = {
-            "id": f"{conference_id}_round{round_num}_{participant['id']}",
-            "speakerId": participant["id"],
-            "speakerName": participant["name"],
-            "speakerTitle": participant["title"],
-            "text": response,
-            "timestamp": datetime.now().isoformat()
-        }
+        # 使用參與者自身的溫度設定，不再依賴情境
+        participant_temperature = participant.get("temperature", 0.7)  # 如未指定，使用預設溫度0.7
         
-        # 儲存消息
-        conf["messages"].append(message)
+        # 生成參與者發言
+        response_text = await generate_ai_response(discussion_prompt, p_id, conference_id, temperature=participant_temperature)
+        await add_message(conference_id, p_id, response_text)
         
-        # 通過WebSocket發送消息
-        await broadcast_message(conference_id, {
-            "type": MESSAGE_TYPES["new_message"],
-            "message": message,
-            "current_speaker": participant["id"]
-        })
+        # 更新上下文
+        context_messages = conference["messages"][-10:]
+        context = "\n".join([f"{msg['speakerName']}：{msg['text']}" for msg in context_messages])
         
-        # 模擬打字延遲
-        await asyncio.sleep(4)
+        # 間隔一段時間，避免消息發送過快
+        await asyncio.sleep(2)
 
     await broadcast_message(conference_id, {
         "type": MESSAGE_TYPES["round_completed"],
@@ -1113,11 +1223,29 @@ async def generate_conclusion(conference_id: str):
     all_messages = [f"{m.get('speakerName', 'Unknown')} ({m.get('speakerTitle', 'Unknown')}): {m.get('text', '')}" for m in conf.get("messages", [])]
     context = "\n".join(all_messages[-30:])  # 最後30條消息，增加上下文範圍
     
+    # 獲取附註補充資料
+    additional_notes = conf.get("additional_notes", "")
+    
     # 構建特殊的秘書結論提示
     secretary_prompt = """
     你是{name}（{title}），負責整理會議記錄並提出總結。
     
     會議主題是「{topic}」，經過了多輪討論。
+    """.format(
+        name=MODERATOR_CONFIG['name'],
+        title=MODERATOR_CONFIG['title'],
+        topic=topic
+    )
+    
+    # 如果有附註資料，加入提示詞
+    if additional_notes and additional_notes.strip():
+        secretary_prompt += f"""
+    
+    會議補充資料：
+    {additional_notes}
+    """
+    
+    secretary_prompt += """
     
     以下是會議中的發言摘要：
     {context}
@@ -1129,12 +1257,7 @@ async def generate_conclusion(conference_id: str):
     4. 提出1-2個後續可能需要關注的方向
     
     格式為：先有一段對主席的回應，然後是總結內容，最後是帶編號的結論列表。總字數控制在400字以內。
-    """.format(
-        name=MODERATOR_CONFIG['name'],
-        title=MODERATOR_CONFIG['title'],
-        topic=topic,
-        context=context
-    )
+    """.format(context=context)
     
     try:
         # 生成總結
@@ -1193,67 +1316,82 @@ async def generate_conclusion(conference_id: str):
             f"感謝各位的參與。由於技術原因，我無法生成完整的會議總結。今天關於「{topic}」的會議到此結束，謝謝大家！"
         )
 
-def get_round_topic(round_num: int, main_topic: str) -> str:
-    """獲取每輪討論的具體主題"""
-    if round_num in ROUND_TOPICS:
-        return ROUND_TOPICS[round_num].format(topic=main_topic)
-    return f"{main_topic}的進一步討論要點"
+def get_round_topic(round_num: int, main_topic: str, conference_id: str = None) -> str:
+    """根據輪次和主題獲取輪次子主題"""
+    # 檢查是否有特定情境的輪次結構
+    if conference_id and conference_id in active_conferences:
+        scenario_id = active_conferences[conference_id].get("scenario")
+        if scenario_id and scenario_id in DISCUSSION_SCENARIOS:
+            scenario_rounds = DISCUSSION_SCENARIOS[scenario_id].get("round_structure", {})
+            if round_num in scenario_rounds:
+                return scenario_rounds[round_num]
+    
+    # 回退到預設輪次主題
+    return ROUND_TOPICS.get(round_num, ROUND_TOPICS[1]).format(topic=main_topic)
 
 # 原生WebSocket端點保持不變
 @app.websocket("/ws/conference/{conference_id}")
 async def websocket_endpoint(websocket: WebSocket, conference_id: str):
-    await websocket.accept()
-    
-    client_info = f"{websocket.client.host}:{websocket.client.port}"
-    logger.info(f"WebSocket連接已建立 - 客戶端: {client_info}，會議ID: {conference_id}")
-    
-    if conference_id not in active_conferences:
-        logger.warning(f"客戶端嘗試連接不存在的會議 {conference_id}")
-        await websocket.send_json({
-            "type": MESSAGE_TYPES["error"],
-            "message": "會議不存在"
-        })
-        await websocket.close()
-        return
-    
-    if conference_id not in connected_clients:
-        connected_clients[conference_id] = []
-    
-    connected_clients[conference_id].append(websocket)
-    logger.info(f"客戶端已連接到會議 {conference_id}, 當前連接數: {len(connected_clients[conference_id])}")
-    
-    # 發送現有消息和狀態
-    conference = active_conferences[conference_id]
-    init_data = {
-        "type": MESSAGE_TYPES["init"],
-        "messages": conference.get("messages", []),
-        "stage": conference.get("stage", "waiting"),
-        "current_round": conference.get("current_round", 0),
-        "conclusion": conference.get("conclusion")
-    }
-    logger.info(f"向客戶端發送初始化數據 - 會議ID: {conference_id}, 階段: {conference.get('stage', 'waiting')}")
-    await websocket.send_json(init_data)
-    
-    # 如果是第一個客戶端連接，開始自我介紹
-    if len(connected_clients[conference_id]) == 1 and conference["stage"] == "waiting":
-        logger.info(f"首位客戶端已連接，開始會議 {conference_id} 的自我介紹階段")
-        await process_introductions(conference_id)
-    
     try:
-        while True:
-            data = await websocket.receive_text()
-            logger.info(f"收到來自客戶端的消息: {data}")
-            await process_client_message(conference_id, data)
-    except WebSocketDisconnect:
-        connected_clients[conference_id].remove(websocket)
-        logger.info(f"客戶端已斷開連接，會議 {conference_id}，剩餘連接: {len(connected_clients[conference_id])}")
-    except Exception as e:
-        logger.error(f"WebSocket連接錯誤: {str(e)}")
+        await websocket.accept()
+        
+        client_info = f"{websocket.client.host}:{websocket.client.port}"
+        logger.info(f"WebSocket連接已建立 - 客戶端: {client_info}，會議ID: {conference_id}")
+        
+        if conference_id not in active_conferences:
+            logger.warning(f"客戶端嘗試連接不存在的會議 {conference_id}")
+            await websocket.send_json({
+                "type": MESSAGE_TYPES["error"],
+                "message": "會議不存在"
+            })
+            await websocket.close()
+            return
+        
+        if conference_id not in connected_clients:
+            connected_clients[conference_id] = []
+        
+        connected_clients[conference_id].append(websocket)
+        logger.info(f"客戶端已連接到會議 {conference_id}, 當前連接數: {len(connected_clients[conference_id])}")
+        
+        # 發送現有消息和狀態
+        conference = active_conferences[conference_id]
+        init_data = {
+            "type": MESSAGE_TYPES["init"],
+            "messages": conference.get("messages", []),
+            "stage": conference.get("stage", "waiting"),
+            "current_round": conference.get("current_round", 0),
+            "conclusion": conference.get("conclusion")
+        }
+        logger.info(f"向客戶端發送初始化數據 - 會議ID: {conference_id}, 階段: {conference.get('stage', 'waiting')}")
+        await websocket.send_json(init_data)
+        
+        # 如果是第一個客戶端連接，開始自我介紹
+        if len(connected_clients[conference_id]) == 1 and conference["stage"] == "waiting":
+            logger.info(f"首位客戶端已連接，開始會議 {conference_id} 的自我介紹階段")
+            # 直接使用asyncio.create_task代替BackgroundTasks
+            asyncio.create_task(process_introductions(conference_id))
+        
         try:
-            connected_clients[conference_id].remove(websocket)
-        except ValueError:
+            while True:
+                data = await websocket.receive_text()
+                logger.info(f"收到來自客戶端的消息: {data}")
+                await process_client_message(conference_id, data)
+        except WebSocketDisconnect:
+            logger.info(f"客戶端正常斷開連接，會議 {conference_id}，客戶端: {client_info}")
+        except Exception as e:
+            logger.error(f"處理WebSocket消息時出錯: {str(e)}")
+        finally:
+            # 確保清理資源
+            if conference_id in connected_clients and websocket in connected_clients[conference_id]:
+                connected_clients[conference_id].remove(websocket)
+                logger.info(f"客戶端已從會議中移除，會議 {conference_id}，當前連接數: {len(connected_clients[conference_id])}")
+    except Exception as e:
+        logger.error(f"WebSocket連接初始化錯誤: {str(e)}")
+        logger.exception("WebSocket初始化時發生異常")
+        try:
+            await websocket.close(code=1011, reason=f"伺服器內部錯誤: {str(e)[:50]}")
+        except:
             pass
-        logger.exception("WebSocket處理過程中發生異常")
 
 async def process_client_message(conference_id: str, data: str):
     """處理從客戶端收到的消息"""
@@ -1266,6 +1404,10 @@ async def process_client_message(conference_id: str, data: str):
             await process_next_round(conference_id)
         elif message_type == "end_conference":
             await end_conference(conference_id)
+        elif message_type == "pause_conference":
+            await pause_conference(conference_id)
+        elif message_type == "resume_conference":
+            await resume_conference(conference_id)
     except json.JSONDecodeError:
         logger.error(f"無法解析客戶端消息: {data}")
     except Exception as e:
@@ -1380,25 +1522,45 @@ async def end_conference(conference_id: str):
 
 async def process_introductions(conference_id: str):
     """處理會議的自我介紹階段"""
-    logger.info(f"開始處理會議 {conference_id} 的自我介紹階段")
-    
-    if conference_id not in active_conferences:
-        logger.error(f"嘗試處理不存在的會議: {conference_id}")
-        return
-    
-    conference = active_conferences[conference_id]
-    
-    # 更新會議階段為「介紹」
-    await update_conference_stage(conference_id, "introduction")
-    
-    # 生成並發送自我介紹
-    await generate_introductions(conference_id)
-    
-    # 進入討論階段
-    await update_conference_stage(conference_id, "discussion")
-    
-    # 開始第一輪討論
-    await run_discussion_round(conference_id, 1)
+    try:
+        logger.info(f"開始處理會議 {conference_id} 的自我介紹階段")
+        
+        if conference_id not in active_conferences:
+            logger.error(f"嘗試處理不存在的會議: {conference_id}")
+            return
+        
+        conference = active_conferences[conference_id]
+        
+        # 檢查是否有客戶端連接
+        if conference_id not in connected_clients or len(connected_clients[conference_id]) == 0:
+            logger.warning(f"會議 {conference_id} 沒有客戶端連接，但嘗試進行自我介紹")
+            # 我們仍然繼續處理，以便稍後客戶端連接時可以看到介紹
+        
+        # 更新會議階段為「介紹」
+        await update_conference_stage(conference_id, "introduction")
+        
+        # 生成並發送自我介紹
+        await generate_introductions(conference_id)
+        
+        # 進入討論階段
+        await update_conference_stage(conference_id, "discussion")
+        
+        # 開始第一輪討論
+        await run_discussion_round(conference_id, 1)
+    except Exception as e:
+        logger.error(f"處理自我介紹階段時出錯: {str(e)}")
+        logger.exception("處理自我介紹階段時發生異常")
+        
+        # 嘗試將會議設置為錯誤狀態
+        try:
+            if conference_id in active_conferences:
+                active_conferences[conference_id]["stage"] = "error"
+                await broadcast_message(conference_id, {
+                    "type": MESSAGE_TYPES["error"],
+                    "message": f"處理自我介紹階段時出錯: {str(e)[:100]}"
+                })
+        except:
+            pass
 
 async def process_conclusion(conference_id: str):
     """處理會議的結論階段"""
@@ -1441,6 +1603,52 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "detail": [{"loc": err["loc"], "msg": err["msg"]} for err in exc.errors()]
         },
     )
+
+# 添加暫停會議和恢復會議的功能
+async def pause_conference(conference_id: str):
+    """暫停會議進行"""
+    if conference_id not in active_conferences:
+        logger.error(f"嘗試暫停不存在的會議: {conference_id}")
+        return
+    
+    # 更新會議狀態
+    conference = active_conferences[conference_id]
+    previous_stage = conference.get("stage", "waiting")
+    conference["previous_stage"] = previous_stage
+    conference["stage"] = "paused"
+    
+    # 通知所有客戶端
+    await broadcast_message(conference_id, {
+        "type": MESSAGE_TYPES["stage_change"],
+        "stage": "paused",
+        "previous_stage": previous_stage
+    })
+    
+    logger.info(f"會議 {conference_id} 已暫停，之前階段: {previous_stage}")
+
+async def resume_conference(conference_id: str):
+    """恢復暫停的會議"""
+    if conference_id not in active_conferences:
+        logger.error(f"嘗試恢復不存在的會議: {conference_id}")
+        return
+    
+    # 復原會議狀態
+    conference = active_conferences[conference_id]
+    previous_stage = conference.get("previous_stage", "discussion")
+    
+    # 如果沒有記錄之前的狀態，預設為討論階段
+    if previous_stage == "paused" or not previous_stage:
+        previous_stage = "discussion"
+    
+    conference["stage"] = previous_stage
+    
+    # 通知所有客戶端
+    await broadcast_message(conference_id, {
+        "type": MESSAGE_TYPES["stage_change"],
+        "stage": previous_stage
+    })
+    
+    logger.info(f"會議 {conference_id} 已恢復到階段: {previous_stage}")
 
 if __name__ == "__main__":
     import uvicorn

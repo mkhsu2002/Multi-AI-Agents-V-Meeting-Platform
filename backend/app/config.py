@@ -100,4 +100,32 @@ MESSAGE_TYPES = {
     "error": "error",
     "next_round": "next_round",
     "end_conference": "end_conference"
+}
+
+# 研討情境模組相關配置
+# 預設情境（如果用戶沒有選擇特定情境）
+DEFAULT_SCENARIO = "business_meeting"
+
+# 研討情境模組配置 - 簡短版本，完整版在 config_scenarios.py
+SCENARIO_INFO = {
+    "board_meeting": {
+        "name": "董事會議",
+        "description": "模擬企業董事會的正式商業決策場景，主要關注戰略性決策、公司治理和監督管理層"
+    },
+    "business_meeting": {
+        "name": "商務會議",
+        "description": "專注於業務發展、市場策略、銷售計劃等實際商業運營議題的討論"
+    },
+    "debate": {
+        "name": "辯論大會",
+        "description": "鼓勵不同觀點的交鋒和辯論，以探索議題的多個角度和可能性"
+    },
+    "brainstorming": {
+        "name": "腦力激盪",
+        "description": "鼓勵創新思考和多元想法的生成，不設限制地探索各種可能性"
+    },
+    "creative_relay": {
+        "name": "創作接龍",
+        "description": "參與者在彼此的創意基礎上進行延伸和拓展，形成連貫的創意流"
+    }
 } 

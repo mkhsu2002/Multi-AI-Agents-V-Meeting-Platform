@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MODERATOR_CONFIG, MESSAGE_TYPES } from '../config/agents';
+import { MODERATOR_CONFIG, MESSAGE_TYPES, CONFERENCE_STAGES } from '../config/agents';
+import { startConference, createWebSocketConnection } from '../utils/api';
 
 const ConferenceContext = createContext();
 
@@ -98,12 +99,26 @@ export const ConferenceProvider = ({ children }) => {
       
       newSocket.onerror = (error) => {
         console.error('WebSocket錯誤:', error);
-        setError('WebSocket連接錯誤，請檢查後端服務是否正在運行。');
+        setError('WebSocket連接錯誤，請檢查後端服務是否正在運行，或者嘗試刷新頁面。');
         setIsLoading(false);
+        
+        // 嘗試在短暫延遲後進行自動重連
+        setTimeout(() => {
+          if (confId && config) {
+            console.log('WebSocket錯誤後自動嘗試重連...');
+            connectSocket(confId);
+          }
+        }, 5000); // 5秒後嘗試重連
       };
       
       newSocket.onclose = (event) => {
         console.log(`WebSocket連接已關閉，代碼: ${event.code}, 原因: ${event.reason}`);
+        
+        if (event.code === 1011) {
+          // 伺服器內部錯誤，顯示具體錯誤原因
+          setError(`伺服器內部錯誤: ${event.reason || '未知錯誤'}，請聯繫管理員或稍後再試。`);
+          return;
+        }
         
         // 如果是正常關閉，不需處理
         if (event.code === 1000) {
@@ -129,7 +144,7 @@ export const ConferenceProvider = ({ children }) => {
       
     } catch (err) {
       console.error('建立WebSocket連接時出錯:', err);
-      setError('無法連接到會議服務，請檢查後端服務是否正在運行。');
+      setError('無法連接到會議服務，請檢查後端服務是否正在運行。若問題持續存在，請嘗試刷新頁面或重新啟動應用。');
       setIsLoading(false);
     }
   };
@@ -160,20 +175,21 @@ export const ConferenceProvider = ({ children }) => {
       });
       
       const data = await response.json();
+      console.log('收到會議創建響應:', data);
       
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || '創建會議失敗');
+      if (!response.ok || !data.conference_id) {
+        throw new Error(data.error || data.detail || '創建會議失敗');
       }
       
       // 保存會議ID
-      setConferenceId(data.conferenceId);
+      setConferenceId(data.conference_id);
       
       // 連接WebSocket
-      connectSocket(data.conferenceId);
+      connectSocket(data.conference_id);
       
       return {
         success: true,
-        conferenceId: data.conferenceId
+        conferenceId: data.conference_id
       };
       
     } catch (err) {
@@ -205,11 +221,53 @@ export const ConferenceProvider = ({ children }) => {
     }
   };
 
+  // 暫停會議
+  const pauseConference = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: MESSAGE_TYPES.PAUSE_CONFERENCE }));
+    } else {
+      setError('WebSocket連接已關閉，無法暫停會議');
+    }
+  };
+
+  // 恢復會議
+  const resumeConference = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: MESSAGE_TYPES.RESUME_CONFERENCE }));
+    } else {
+      setError('WebSocket連接已關閉，無法恢復會議');
+    }
+  };
+
   // 匯出會議記錄
   const exportRecord = () => {
     // 格式化會議記錄
     let record = `# 會議記錄\n\n`;
     record += `## 主題: ${config.topic}\n\n`;
+    
+    // 添加會議模式信息
+    let scenarioName = '標準商務會議';
+    if (config.scenario) {
+      // 將scenario_id轉換為更友好的顯示名稱
+      switch (config.scenario) {
+        case 'brainstorming':
+          scenarioName = '腦力激盪模式';
+          break;
+        case 'board_meeting':
+          scenarioName = '董事會議模式';
+          break;
+        case 'debate':
+          scenarioName = '辯論大會模式';
+          break;
+        case 'creative_chain':
+          scenarioName = '創作接龍模式';
+          break;
+        default:
+          scenarioName = config.scenario; // 如果找不到特定名稱，使用原始值
+      }
+    }
+    record += `## 會議模式: ${scenarioName}\n\n`;
+    
     record += `## 參與者:\n`;
     
     config.participants.forEach(p => {
@@ -217,6 +275,11 @@ export const ConferenceProvider = ({ children }) => {
         record += `- ${p.name} (${p.title})\n`;
       }
     });
+    
+    // 如果有附註補充資料，添加到記錄中
+    if (config.additional_notes && config.additional_notes.trim()) {
+      record += `\n## 附註補充資料:\n${config.additional_notes}\n\n`;
+    }
     
     record += `\n## 對話內容:\n\n`;
     
@@ -262,6 +325,8 @@ export const ConferenceProvider = ({ children }) => {
     startConference,
     nextRound,
     endConference,
+    pauseConference,
+    resumeConference,
     exportRecord
   };
 

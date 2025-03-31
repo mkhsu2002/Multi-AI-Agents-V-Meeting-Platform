@@ -14,7 +14,10 @@ function App() {
     topic: '',
     rounds: 6,
     chair: 'General manager',
-    participants: []
+    participants: [],
+    scenario: null,
+    language: "繁體中文",
+    conclusion: true
   });
 
   // 加載智能體數據
@@ -95,7 +98,12 @@ function App() {
   };
 
   const startConference = (config) => {
-    setConferenceConfig(config);
+    const completeConfig = {
+      ...conferenceConfig,
+      ...config,
+      scenario: config.scenario || conferenceConfig.scenario
+    };
+    setConferenceConfig(completeConfig);
     setIsSetup(false);
   };
 

@@ -23,7 +23,9 @@ export const MESSAGE_TYPES = {
   CONCLUSION: "conclusion",
   ERROR: "error",
   NEXT_ROUND: "next_round",
-  END_CONFERENCE: "end_conference"
+  END_CONFERENCE: "end_conference",
+  PAUSE_CONFERENCE: "pause_conference",
+  RESUME_CONFERENCE: "resume_conference"
 };
 
 // 會議階段
@@ -32,7 +34,8 @@ export const CONFERENCE_STAGES = {
   INTRODUCTIONS: "introductions",
   DISCUSSION: "discussion",
   CONCLUSION: "conclusion",
-  ENDED: "ended"
+  ENDED: "ended",
+  PAUSED: "paused"
 };
 
 // 可用的預設角色設定
