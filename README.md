@@ -153,6 +153,85 @@ Visit `http://localhost:8000/api-test` to open the API test page, which allows y
    - Backend: http://localhost:8000
    - API test page: http://localhost:8000/api-test
 
+### Docker Installation (Local)
+
+1. Install Docker and Docker Compose on your machine
+   - [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows and macOS
+   - For Linux, follow [Docker Engine installation guide](https://docs.docker.com/engine/install/)
+
+2. Clone the repository and navigate to the project directory
+   ```bash
+   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
+   cd TinyPigTroupe
+   ```
+
+3. Create .env file for the backend and add your OpenAI API key
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit the .env file and add your OpenAI API key
+   ```
+
+4. Build and start the containers
+   ```bash
+   docker-compose up -d --build
+   ```
+
+5. Access the application
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
+   - API test page: http://localhost:8000/api-test
+
+6. Stop the containers when done
+   ```bash
+   docker-compose down
+   ```
+
+### Google Colab Setup
+
+1. Open a new [Google Colab notebook](https://colab.research.google.com/)
+
+2. Clone the repository and set up the backend
+   ```python
+   !git clone https://github.com/mkhsu2002/TinyPigTroupe.git
+   %cd TinyPigTroupe/backend
+   !pip install -r requirements.txt
+   
+   # Create .env file with your OpenAI API key
+   %%writefile .env
+   OPENAI_API_KEY=your_api_key_here
+   ```
+
+3. Install and configure ngrok to expose the backend server
+   ```python
+   !pip install pyngrok
+   !ngrok authtoken YOUR_NGROK_AUTH_TOKEN  # Get from https://dashboard.ngrok.com/
+   
+   from pyngrok import ngrok
+   # Start the backend server in the background
+   !nohup python run.py &
+   
+   # Create a tunnel to the backend server
+   public_url = ngrok.connect(8000)
+   print(f"Backend is available at: {public_url}")
+   ```
+
+4. Update the frontend API configuration to use the ngrok URL
+   ```python
+   %cd ../frontend
+   
+   # Install Node.js packages in Colab (may take a few minutes)
+   !npm install
+   
+   # Update API endpoint in the frontend to use ngrok URL
+   # This is a simplified example - you may need to modify specific files
+   !sed -i "s|http://localhost:8000|{public_url}|g" src/utils/api.js
+   
+   # Start the frontend (this will provide a link to access it)
+   !npm start
+   ```
+
+5. Access the application through the link provided in the Colab output
+
 ## Customization and Extension
 
 - You can add new UI elements or interactive features by modifying the frontend code

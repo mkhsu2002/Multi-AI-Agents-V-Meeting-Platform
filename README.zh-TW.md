@@ -167,6 +167,85 @@ uvicorn app.main:app --reload
    - 後端: http://localhost:8000
    - API測試頁面: http://localhost:8000/api-test
 
+### Docker 安裝（本地）
+
+1. 在您的機器上安裝 Docker 和 Docker Compose
+   - 對於 Windows 和 macOS，安裝 [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   - 對於 Linux，請按照 [Docker 引擎安裝指南](https://docs.docker.com/engine/install/)
+
+2. 克隆倉庫並導航到項目目錄
+   ```bash
+   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
+   cd TinyPigTroupe
+   ```
+
+3. 為後端創建 .env 文件並添加您的 OpenAI API 密鑰
+   ```bash
+   cp backend/.env.example backend/.env
+   # 編輯 .env 文件並添加您的 OpenAI API 密鑰
+   ```
+
+4. 構建並啟動容器
+   ```bash
+   docker-compose up -d --build
+   ```
+
+5. 訪問應用
+   - 前端: http://localhost:3000
+   - 後端: http://localhost:8000
+   - API測試頁面: http://localhost:8000/api-test
+
+6. 完成後停止容器
+   ```bash
+   docker-compose down
+   ```
+
+### Google Colab 設置
+
+1. 打開一個新的 [Google Colab 筆記本](https://colab.research.google.com/)
+
+2. 克隆倉庫並設置後端
+   ```python
+   !git clone https://github.com/mkhsu2002/TinyPigTroupe.git
+   %cd TinyPigTroupe/backend
+   !pip install -r requirements.txt
+   
+   # 創建包含 OpenAI API 密鑰的 .env 文件
+   %%writefile .env
+   OPENAI_API_KEY=您的API密鑰
+   ```
+
+3. 安裝並配置 ngrok 來暴露後端服務器
+   ```python
+   !pip install pyngrok
+   !ngrok authtoken 您的NGROK令牌  # 從 https://dashboard.ngrok.com/ 獲取
+   
+   from pyngrok import ngrok
+   # 在後台啟動後端服務器
+   !nohup python run.py &
+   
+   # 為後端服務器創建隧道
+   public_url = ngrok.connect(8000)
+   print(f"後端可通過以下地址訪問: {public_url}")
+   ```
+
+4. 更新前端 API 配置以使用 ngrok URL
+   ```python
+   %cd ../frontend
+   
+   # 在 Colab 中安裝 Node.js 包（可能需要幾分鐘）
+   !npm install
+   
+   # 在前端更新 API 端點以使用 ngrok URL
+   # 這是一個簡化的例子 - 您可能需要修改特定文件
+   !sed -i "s|http://localhost:8000|{public_url}|g" src/utils/api.js
+   
+   # 啟動前端（這將提供一個訪問鏈接）
+   !npm start
+   ```
+
+5. 通過 Colab 輸出中提供的鏈接訪問應用
+
 ## 自定義與擴展
 
 - 可以通過修改前端代碼添加新的 UI 元素或互動功能
