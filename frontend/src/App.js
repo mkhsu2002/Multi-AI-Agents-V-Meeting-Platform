@@ -139,7 +139,7 @@ function App() {
   const Footer = () => (
     <footer className="p-4 bg-primary text-white text-center mt-8">
       <div className="container mx-auto">
-        <div className="mb-2">飛豬隊友 AI 虛擬會議系統 v1.5</div>
+        <div className="mb-2">飛豬隊友 AI 虛擬會議系統 v2.1.0</div>
         <div className="flex justify-center items-center space-x-4">
           <a 
             href="https://buymeacoffee.com/mkhsu2002w" 

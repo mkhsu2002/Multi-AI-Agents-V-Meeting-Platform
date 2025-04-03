@@ -13,9 +13,11 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
     conferenceStage,
     conclusion,
     error,
+    conferenceId,
     startConference,
     pauseConference,
     resumeConference,
+    endConference,
     exportRecord
   } = useConference();
   
@@ -115,11 +117,10 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
             className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300 transition duration-200"
             disabled={!displayError && conferenceStage !== 'ended' && conferenceStage !== 'waiting' && !isLoading}
           >
-            {displayError ? '返回重試' : '返回設置'}
+            {displayError ? '返回重試' : (conferenceStage === 'ended' ? '返回設置' : '返回設置')}
           </button>
           
-          {/* 只在會議進行中顯示暫停/恢復按鈕 */}
-          {conferenceStage !== 'waiting' && conferenceStage !== 'ended' && (
+          {!displayError && conferenceStage !== 'waiting' && conferenceStage !== 'ended' && (
             conferenceStage === 'paused' ? (
               <button 
                 onClick={resumeConference}
@@ -137,6 +138,16 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
                 暫停會議
               </button>
             )
+          )}
+          
+          {!displayError && conferenceStage !== 'waiting' && conferenceStage !== 'ended' && (
+            <button 
+              onClick={endConference}
+              className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition duration-200"
+              disabled={isLoading}
+            >
+              結束會議
+            </button>
           )}
           
           <button 
@@ -248,12 +259,26 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
             </div>
             
             {/* 會議結論 */}
-            {conferenceStage === 'ended' && conclusion && (
-              <div className="mt-4 p-4 bg-accent bg-opacity-20 rounded-lg border border-accent">
-                <h3 className="text-lg font-bold mb-2">會議結論</h3>
-                <div className="whitespace-pre-line">
-                  {conclusion}
-                </div>
+            {conferenceStage === 'conclusion' && conclusion && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h3 className="text-lg font-semibold mb-2">會議結論</h3>
+                <div className="whitespace-pre-wrap text-sm">{conclusion}</div>
+              </div>
+            )}
+            
+            {/* 會議結束提示 */}
+            {conferenceStage === 'ended' && (
+              <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg text-center">
+                <p className="font-semibold text-lg">會議已結束</p>
+                <p className="text-gray-600">您可以匯出會議記錄或返回設置頁面。</p>
+              </div>
+            )}
+
+            {/* 會議暫停提示 */}
+            {conferenceStage === 'paused' && (
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+                <p className="font-semibold text-lg">會議已暫停</p>
+                <p className="text-gray-600">點擊 "繼續會議" 按鈕恢復。</p>
               </div>
             )}
           </div>

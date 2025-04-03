@@ -1,4 +1,4 @@
-# FlyPig AI Virtual Conference System (v2.0)
+# FlyPig AI Virtual Conference System (v2.1.0)
 
 [![YouTube Video Presentation](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
@@ -6,23 +6,44 @@
 
 FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeting platform that allows multiple AI agents to engage in interactive discussions, simulating business meetings, creative brainstorming sessions, or academic debates. It features a pioneering web-based real-time visualization of the entire meeting process.
 
-## Version Information
+## Version History
 
-Current Version: v2.0
+Current Version: v2.1.0
 Major Updates:
-- Added meeting pause/resume functionality for better user control
-- Implemented a new supplementary notes field for additional context
-- Enhanced meeting record display to include meeting mode information
-- Fixed issue with agents speaking consecutively in debate mode
-- Improved WebSocket connection stability and error handling
-- Decoupled temperature settings from conference mode for more flexibility
+- Improved meeting pause/resume functionality, ensuring the conference flow actually stops and resumes.
+- Added an explicit "End Conference" button and corresponding backend logic to properly terminate meetings.
+
+Previous Version: v2.0.0
+Major Updates:
+- Added meeting pause/resume functionality for better control.
+- Implemented an additional notes field for extra context.
+- Enhanced meeting log display to include scenario mode info.
+- Fixed issue with agents speaking consecutively in debate mode.
+- Improved WebSocket connection stability and error handling.
+- Decoupled temperature setting from scenarios for flexibility.
+- Unified backend/frontend agent parameter model (incl. individual temp & custom role prompts).
+- Updated documentation and backend version number to 2.0.
 
 Previous Version (v1.5):
-- Replaced the moderator with an AI Secretary role for improved meeting flow
-- Enhanced the chairman role to propose 3 related topics at the beginning of the meeting
-- Improved the discussion process with consensus checking for each round
-- Fixed the issue of moderator speaking twice in the introduction phase
-- Optimized role clarity between the chairman and the secretary
+- Changed moderator to "Secretary Pig" role, optimizing flow.
+- Enhanced chair role to propose 3 related topics and goals.
+- Improved discussion flow with chair reviewing consensus.
+- Fixed moderator repeating introductions.
+- Optimized chair/secretary role division.
+
+Previous Version (v1.2):
+- Added complete agent management interface (create, edit, manage roles).
+- Implemented agent import/export functionality.
+- Added role prompts to influence AI behavior/style.
+- Enhanced cross-page data synchronization and state management.
+- Fixed agent name display issues for UI consistency.
+
+Previous Version (v1.1):
+- Enhanced WebSocket stability with auto-reconnect.
+- Optimized frontend error handling.
+- Added automated restart scripts.
+- Fixed meeting loss issues, improving reliability.
+- Improved exception handling and logging.
 
 ## Key Features
 
@@ -110,18 +131,18 @@ uvicorn app.main:app --reload
 
 ## API Test Page
 
-Visit `http://localhost:8000/api-test` to open the API test page, which allows you to:
-- Check the OpenAI API connection status
-- Update your API key
-- Test conversations with the LLM
+Access `http://localhost:8000/api-test` to open the API test page for:
+- Checking OpenAI API connection status.
+- Updating the API key temporarily for testing.
+- Testing direct conversation with the LLM using the backend logic.
 
 ## Installation Guide
 
 ### System Requirements
-- Node.js v14+ 
+- Node.js v14+
 - Python 3.8+
 - npm or yarn
-- Valid OpenAI API key
+- Valid OpenAI API Key (v1.x+ recommended for full compatibility with latest client library features)
 
 ### Complete Installation Steps
 

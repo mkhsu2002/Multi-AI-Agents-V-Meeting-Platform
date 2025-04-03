@@ -170,7 +170,7 @@ const SetupPanel = ({ initialConfig, onStart }) => {
                   className="w-full p-2 border rounded-lg"
                 >
                   {config.participants
-                    .filter(p => p.isActive && p.id !== 'Secretary Pig')
+                    .filter(p => p.isActive && p.id !== 'Secretary')
                     .map(p => (
                       <option key={p.id} value={p.id}>
                         {p.name} ({p.title})
@@ -219,7 +219,7 @@ const SetupPanel = ({ initialConfig, onStart }) => {
                     checked={participant.isActive}
                     onChange={(e) => handleParticipantActiveChange(participant.id, e.target.checked)}
                     className="mr-3 h-5 w-5 text-primary focus:ring-primary"
-                    disabled={participant.id === 'Secretary Pig'} // 秘書必須參加
+                    disabled={participant.id === 'Secretary'}
                   />
                   <div>
                     <div className="font-medium">{participant.name}</div>

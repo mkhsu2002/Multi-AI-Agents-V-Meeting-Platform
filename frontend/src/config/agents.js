@@ -5,7 +5,7 @@
 
 // 主持人配置
 export const MODERATOR_CONFIG = {
-  id: "Secretary Pig",
+  id: "Secretary",
   name: "豬秘書",
   title: "AI秘書",
   personality: "條理分明、高效、細心",

@@ -17,12 +17,12 @@ DISCUSSION_SCENARIOS = {
             4: "責任分配：明確後續工作的責任人和時間表"
         },
         "role_emphasis": {
-            "Pig Boss": 2.0,       # 增強領導角色的發言權重
-            "Calculator Pig": 1.5,  # 增強財務角色的發言權重
-            "Busy Pig": 1.0,        # 保持正常權重
-            "Brainy Pig": 1.0,      # 保持正常權重
-            "Professor Pig": 1.0,   # 保持正常權重
-            "Caregiver Pig": 0.8    # 稍微降低後勤角色的發言權重
+            "General manager": 2.0,       # 增強領導角色的發言權重
+            "Financial manager": 1.5,  # 增強財務角色的發言權重
+            "Business manager": 1.0,        # 保持正常權重
+            "Marketing manager": 1.0,      # 保持正常權重
+            "R&D director": 1.0,   # 保持正常權重
+            "HR": 0.8    # 稍微降低後勤角色的發言權重
         },
         "discussion_guidance": "在董事會議情境中，討論應當圍繞公司治理、戰略決策、財務表現和風險管控等方面展開。參與者應當基於數據和事實進行分析，提出具有建設性和前瞻性的建議。"
     },
@@ -39,12 +39,12 @@ DISCUSSION_SCENARIOS = {
             4: "執行計劃：確定具體的執行步驟、時間表和責任人"
         },
         "role_emphasis": {
-            "Pig Boss": 1.2,       # 適度增強領導角色的發言權重
-            "Busy Pig": 1.8,       # 顯著增強業務角色的發言權重
-            "Brainy Pig": 1.5,     # 增強行銷角色的發言權重
-            "Calculator Pig": 1.0,  # 保持正常權重
-            "Professor Pig": 0.8,   # 稍微降低技術角色的發言權重
-            "Caregiver Pig": 0.8    # 稍微降低後勤角色的發言權重
+            "General manager": 1.2,       # 適度增強領導角色的發言權重
+            "Business manager": 1.8,       # 顯著增強業務角色的發言權重
+            "Marketing manager": 1.5,     # 增強行銷角色的發言權重
+            "Financial manager": 1.0,  # 保持正常權重
+            "R&D director": 0.8,   # 稍微降低技術角色的發言權重
+            "HR": 0.8    # 稍微降低後勤角色的發言權重
         },
         "discussion_guidance": "在商務會議情境中，討論應當重視實用性和可行性，關注市場機會和挑戰，提出具體的業務增長策略和執行計劃。"
     },
@@ -61,12 +61,12 @@ DISCUSSION_SCENARIOS = {
             4: "總結陳詞：各方總結自己的論點，並嘗試找出可能的共識或妥協方案"
         },
         "role_emphasis": {
-            "Pig Boss": 1.0,       # 保持正常權重
-            "Busy Pig": 1.0,       # 保持正常權重
-            "Brainy Pig": 1.2,     # 適度增強行銷角色的發言權重
-            "Calculator Pig": 1.0,  # 保持正常權重
-            "Professor Pig": 1.2,   # 適度增強技術角色的發言權重
-            "Caregiver Pig": 1.0    # 保持正常權重
+            "General manager": 1.0,       # 保持正常權重
+            "Business manager": 1.0,       # 保持正常權重
+            "Marketing manager": 1.2,     # 適度增強行銷角色的發言權重
+            "Financial manager": 1.0,  # 保持正常權重
+            "R&D director": 1.2,   # 適度增強技術角色的發言權重
+            "HR": 1.0    # 保持正常權重
         },
         "discussion_guidance": "在辯論大會情境中，參與者應當清晰表達自己的立場，提供有力的論據支持，積極回應和挑戰他人的觀點，但始終保持尊重和理性。"
     },
@@ -83,12 +83,12 @@ DISCUSSION_SCENARIOS = {
             4: "評估篩選：對所有想法進行初步評估，篩選出最有潛力的方向"
         },
         "role_emphasis": {
-            "Pig Boss": 0.9,       # 稍微降低領導角色的發言權重
-            "Busy Pig": 1.0,       # 保持正常權重
-            "Brainy Pig": 1.8,     # 顯著增強行銷角色的發言權重
-            "Calculator Pig": 0.8,  # 稍微降低財務角色的發言權重
-            "Professor Pig": 1.5,   # 增強技術角色的發言權重
-            "Caregiver Pig": 1.0    # 保持正常權重
+            "General manager": 0.9,       # 稍微降低領導角色的發言權重
+            "Business manager": 1.0,       # 保持正常權重
+            "Marketing manager": 1.8,     # 顯著增強行銷角色的發言權重
+            "Financial manager": 0.8,  # 稍微降低財務角色的發言權重
+            "R&D director": 1.5,   # 增強技術角色的發言權重
+            "HR": 1.0    # 保持正常權重
         },
         "discussion_guidance": "在腦力激盪情境中，沒有所謂'壞'的想法，所有參與者應當自由表達創意，不要急於批評或評判他人的想法，而是嘗試在他人想法的基礎上進一步發展。"
     },
@@ -105,12 +105,12 @@ DISCUSSION_SCENARIOS = {
             4: "收束總結：將所有創意元素進行整合，形成完整的創意或故事"
         },
         "role_emphasis": {
-            "Pig Boss": 1.0,       # 保持正常權重
-            "Busy Pig": 1.0,       # 保持正常權重
-            "Brainy Pig": 1.5,     # 增強行銷角色的發言權重
-            "Calculator Pig": 0.7,  # 降低財務角色的發言權重
-            "Professor Pig": 1.2,   # 適度增強技術角色的發言權重
-            "Caregiver Pig": 1.2    # 適度增強後勤角色的發言權重
+            "General manager": 1.0,       # 替換
+            "Business manager": 1.0,       # 替換
+            "Marketing manager": 1.5,     # 替換
+            "Financial manager": 0.7,  # 替換
+            "R&D director": 1.2,   # 替換
+            "HR": 1.2    # 替換
         },
         "discussion_guidance": "在創作接龍情境中，每位參與者都應當認真聆聽前一位的發言，確保自己的發言與前一位有明確的聯繫和延續性，同時注入自己的創意和新鮮元素。"
     }
