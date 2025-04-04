@@ -15,9 +15,9 @@ import json
 import uuid
 import time
 from starlette.websockets import WebSocketDisconnect
-from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLATES, ROUND_TOPICS, MESSAGE_TYPES, SCENARIO_INFO, DEFAULT_SCENARIO
-# 引入情境模組配置
-from app.config_scenarios import DISCUSSION_SCENARIOS, SCENARIO_SELECTION_GUIDE
+from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLATES, ROUND_TOPICS, MESSAGE_TYPES
+# 引入新的動態場景模組
+from app.scenarios import DISCUSSION_SCENARIOS, SCENARIO_INFO, DEFAULT_SCENARIO, SCENARIO_SELECTION_GUIDE
 
 # 載入環境變數
 load_dotenv()
@@ -1088,151 +1088,274 @@ async def generate_introductions(conference_id: str):
     
     # 注意：此處不再添加主持人的結束語，將直接由主席在第一輪討論中開場
 
+    # === 新增：豬秘書交接給主席 ===
+    # 識別真正的主席 (與 run_discussion_round 邏輯類似，確保一致性)
+    conf = active_conferences[conference_id]
+    config = conf["config"]
+    participants_dict = conf["participants"]
+    designated_chair_id = config.get("chair")
+    chair_id = None
+    chair_data = None
+
+    if designated_chair_id and designated_chair_id in participants_dict and participants_dict[designated_chair_id].get("isActive", True):
+        chair_id = designated_chair_id
+        chair_data = participants_dict[chair_id]
+    elif "General manager" in participants_dict and participants_dict["General manager"].get("isActive", True):
+        chair_id = "General manager"
+        chair_data = participants_dict[chair_id]
+    else:
+        for p_id, p_data in participants_dict.items():
+            if p_id != MODERATOR_CONFIG["id"] and p_data.get("isActive", True):
+                chair_id = p_id
+                chair_data = p_data
+                break
+
+    if chair_data:
+        chair_name = chair_data.get("name", "指定主席")
+        chair_title = chair_data.get("title", "")
+        handover_message = f"好的，感謝大家的自我介紹。現在我們正式進入討論階段，接下來將由我們本次會議的主席 {chair_name} ({chair_title}) 來引導討論。"
+        await check_pause(conference_id)
+        await add_message(conference_id, MODERATOR_CONFIG["id"], handover_message)
+        await asyncio.sleep(1) # 短暫停頓
+    else:
+        logger.error(f"會議 {conference_id} 在介紹後無法確定主席，討論可能無法正常開始。")
+        await check_pause(conference_id)
+        await add_message(conference_id, MODERATOR_CONFIG["id"], "自我介紹完畢。但似乎無法確定會議主席，接下來的討論可能無法正常進行。")
+    # === 交接結束 ===
+
+    # 注意：此處不再添加主持人的結束語，將直接由主席在第一輪討論中開場
+
 async def run_discussion_round(conference_id: str, round_num: int):
     """執行一輪討論"""
     await check_pause(conference_id) # <--- 在函數開頭檢查
     if conference_id not in active_conferences:
         logger.error(f"找不到會議 {conference_id}")
         return
-    
+
     conference = active_conferences[conference_id]
     main_topic = conference["topic"]
-    
+    config = conference["config"] # 獲取會議配置
+    participants_dict = conference["participants"] # 獲取參與者字典
+
     # 更新當前輪次
     await update_current_round(conference_id, round_num)
-    
+
+    # === 修正：識別真正的主席 ===
+    designated_chair_id = config.get("chair") # 從前端傳來的配置中獲取指定主席ID
+    chair_id = None
+    chair_data = None
+
+    if designated_chair_id and designated_chair_id in participants_dict and participants_dict[designated_chair_id].get("isActive", True):
+        chair_id = designated_chair_id
+        chair_data = participants_dict[chair_id]
+        logger.info(f"使用指定的主席: {chair_data.get('name')} ({chair_id})")
+    else:
+        # 如果沒有指定或指定的主席無效，則嘗試找 'General manager'
+        potential_gm_id = "General manager"
+        if potential_gm_id in participants_dict and participants_dict[potential_gm_id].get("isActive", True):
+            chair_id = potential_gm_id
+            chair_data = participants_dict[chair_id]
+            logger.warning(f"未指定有效主席，回退使用 General Manager: {chair_data.get('name')} ({chair_id})")
+        else:
+            # 如果連 GM 都沒有，則使用第一個活躍的非秘書參與者
+            for p_id, p_data in participants_dict.items():
+                if p_id != MODERATOR_CONFIG["id"] and p_data.get("isActive", True):
+                    chair_id = p_id
+                    chair_data = p_data
+                    logger.warning(f"未指定有效主席且無 General Manager，回退使用第一個活躍參與者: {chair_data.get('name')} ({chair_id})")
+                    break
+
+    # 如果找不到任何有效的主席（例如只有秘書），則讓秘書擔任
+    if not chair_id or not chair_data:
+        logger.error(f"無法確定有效的主席，將由秘書 {MODERATOR_CONFIG['name']} 引導討論。")
+        chair_id = MODERATOR_CONFIG["id"]
+        chair_data = MODERATOR_CONFIG
+    # === 主席識別結束 ===
+
+    chair_name = chair_data.get("name", "未知主席")
+    chair_title = chair_data.get("title", "未知職位")
+
     # 獲取輪次主題
     round_topic = get_round_topic(round_num, main_topic, conference_id)
+
+    # 獲取補充資料
+    additional_notes = conference.get("additional_notes", "")
+
+    # === 新增：準備參與者名單字符串 ===
+    active_participants_list = []
+    for p_id, p_data in participants_dict.items():
+        # 排除主席自己和秘書
+        if p_id != chair_id and p_id != MODERATOR_CONFIG["id"] and p_data.get("isActive", True):
+            active_participants_list.append(f"- {p_data.get('name', p_id)} ({p_data.get('title', '未知職位')})")
     
-    # 主席（秘書）開場
-    chair_id = MODERATOR_CONFIG["id"]
-    chair_name = MODERATOR_CONFIG["name"]
-    chair_title = MODERATOR_CONFIG["title"]
-    
-    # 主席開場白提示詞
+    participant_list_str = "\\n".join(active_participants_list) if active_participants_list else "無其他活躍參與者"
+    logger.debug(f"傳遞給主席提示詞的參與者列表: \\n{participant_list_str}")
+    # === 參與者名單準備結束 ===
+
+
+    # 主席開場白提示詞 - 加入 additional_notes 和 participant_list
     chair_prompt = PROMPT_TEMPLATES["chair_opening"].format(
         name=chair_name,
         title=chair_title,
         round_num=round_num,
         topic=main_topic,
-        round_topic=round_topic
+        round_topic=round_topic,
+        additional_notes=additional_notes if additional_notes and additional_notes.strip() else "無", # 傳遞補充資料
+        participant_list=participant_list_str # 傳遞參與者列表
     )
-    
-    # 如果有附註資料，加入提示詞
-    additional_notes = conference.get("additional_notes", "")
-    if additional_notes and additional_notes.strip():
-        chair_prompt += f"\n\n補充資料：{additional_notes}"
-    
+
     await check_pause(conference_id) # <--- 生成回應前檢查
     # 生成主席開場白
     chair_text = await generate_ai_response(chair_prompt, chair_id, conference_id)
     await check_pause(conference_id) # <--- 添加消息前檢查
     await add_message(conference_id, chair_id, chair_text)
+
+    # === 新增：嘗試解析主席指派的第一位發言者 ===
+    first_speaker_id = None
+    participants_to_speak_original = [p_data for p_id, p_data in participants_dict.items() if p_id != chair_id and p_id != MODERATOR_CONFIG["id"] and p_data.get("isActive", True)]
     
+    # 創建一個查找表：姓名/職位 -> ID
+    name_title_to_id = {}
+    for p_data in participants_to_speak_original:
+        p_id = p_data["id"]
+        name = p_data.get("name")
+        title = p_data.get("title")
+        if name: name_title_to_id[name] = p_id
+        if title: name_title_to_id[title] = p_id # 注意：如果職位重複可能會有問題，但暫時這樣處理
+        if name and title: name_title_to_id[f"{name} {title}"] = p_id # 組合查找
+        
+    logger.debug(f"用於解析主席指派的查找表: {name_title_to_id}")
+
+    # 簡單查找：檢查主席發言中是否包含參與者的姓名或職位
+    # 為了提高準確性，從最長的組合開始查找 (姓名+職位)
+    sorted_keys = sorted(name_title_to_id.keys(), key=len, reverse=True)
+    for key in sorted_keys:
+        if key in chair_text:
+            first_speaker_id = name_title_to_id[key]
+            logger.info(f"解析到主席可能指派的第一位發言者: {key} (ID: {first_speaker_id})")
+            break # 找到第一個就停止
+
+    if not first_speaker_id:
+        logger.warning(f"無法從主席發言中明確解析出第一位被指派者。將按預計順序發言。主席發言內容：\n{chair_text}")
+    # === 解析結束 ===
+
     # 等待一下，讓客戶端有時間處理主席的消息
     await asyncio.sleep(2)
+
+    # === 調整後續發言邏輯 ===
+    participants_to_speak = list(participants_to_speak_original) # 創建副本以修改
     
-    # 獲取參與者列表（排除主席秘書）
-    participants = [p for p_id, p in conference["participants"].items() if p_id != chair_id and p.get("isActive", True)]
-    
-    # 獲取上一輪最後發言的參與者ID
-    last_speakers = []
-    if round_num > 1:
-        # 檢查上一輪的最後幾個發言者
-        messages = conference.get("messages", [])
-        if messages:
-            # 從後往前找最多3個不同的發言者
-            speaker_count = 0
-            for msg in reversed(messages):
-                speaker_id = msg.get("speakerId")
-                if speaker_id != chair_id and speaker_id not in last_speakers:
-                    last_speakers.append(speaker_id)
-                    speaker_count += 1
-                    if speaker_count >= 3:
-                        break
-    
-    logger.info(f"上一輪最後發言者: {last_speakers}")
-    
-    # 如果使用情境模組，應用角色權重
-    weights = {}
-    scenario_id = conference.get("scenario")
-    if scenario_id and scenario_id in DISCUSSION_SCENARIOS:
-        role_emphasis = DISCUSSION_SCENARIOS[scenario_id].get("role_emphasis", {})
-        for p in participants:
-            p_id = p["id"]
-            # 如果角色在權重表中，使用定義的權重；否則使用預設權重1.0
-            base_weight = role_emphasis.get(p_id, 1.0)
+    # 如果解析到了第一位發言者，先讓他發言
+    if first_speaker_id:
+        assigned_participant_data = participants_dict.get(first_speaker_id)
+        if assigned_participant_data:
+            p_name = assigned_participant_data["name"]
+            p_title = assigned_participant_data["title"]
+            logger.info(f"由被指派者 {p_name} ({p_title}) 首先發言。")
+
+            discussion_prompt = PROMPT_TEMPLATES["discussion"].format(
+                name=p_name,
+                title=p_title,
+                topic=main_topic,
+                round_topic=round_topic,
+                context=chair_text # 讓被指派者看到主席的完整指示
+            )
+            if additional_notes and additional_notes.strip():
+                discussion_prompt += f"\\n\\n補充資料參考：{additional_notes}"
+
+            await check_pause(conference_id)
+            response_text = await generate_ai_response(discussion_prompt, first_speaker_id, conference_id)
+            await check_pause(conference_id)
+            await add_message(conference_id, first_speaker_id, response_text)
             
-            # 如果是上一輪最後發言的參與者，降低權重
-            if p_id in last_speakers:
-                # 上一輪最後發言者的權重降低，越近發言的權重越低
-                position = last_speakers.index(p_id)
-                penalty = 0.5 - (position * 0.1)  # 最後發言者降低50%，倒數第二降低40%，倒數第三降低30%
-                weights[p_id] = base_weight * (1 - penalty)
-                logger.info(f"參與者 {p_id} 是上一輪發言者，權重從 {base_weight} 降低至 {weights[p_id]}")
-            else:
-                weights[p_id] = base_weight
+            # 更新上下文並等待
+            context_messages = conference["messages"][-15:]
+            context = "\\n".join([f"{msg['speakerName']} ({msg['speakerTitle']}): {msg['text']}" for msg in context_messages])
+            await asyncio.sleep(2)
+
+            # 從待發言列表中移除已被指派者
+            participants_to_speak = [p for p in participants_to_speak if p["id"] != first_speaker_id]
+        else:
+            logger.error(f"解析出的被指派者 ID {first_speaker_id} 無效。")
+            first_speaker_id = None # 重置，以執行後續的預計順序
+            
+    # (如果沒有解析到，或者解析出的ID無效，則 first_speaker_id 為 None，會跳過上面的 if 塊)
     
-    # 根據權重排序參與者（權重高的更有可能先發言）
-    # 如果沒有權重，則使用原始順序
-    if weights:
-        # 對權重進行輕微隨機化，避免完全固定的發言順序
-        import random
-        for p_id in weights:
-            weights[p_id] *= random.uniform(0.9, 1.1)
+    # 讓剩下的參與者按預計順序發言
+    if participants_to_speak:
+        logger.info(f"由剩餘參與者按預計順序發言: {[p['id'] for p in participants_to_speak]}")
         
-        participants.sort(key=lambda p: weights.get(p["id"], 1.0), reverse=True)
-    else:
-        # 沒有權重時，將上一輪最後發言的參與者排到後面
-        if last_speakers:
+        # (這裡的排序邏輯可以保留，作為主席未明確指派後續發言者時的回退機制)
+        last_speakers = []
+        if round_num > 1 or first_speaker_id: # 如果是第一輪但主席已指派，也需要考慮最後發言者
+            messages = conference.get("messages", [])
+            if messages:
+                speaker_count = 0
+                for msg in reversed(messages):
+                    speaker_id = msg.get("speakerId")
+                    if speaker_id != chair_id and speaker_id != MODERATOR_CONFIG["id"] and speaker_id not in last_speakers:
+                        last_speakers.append(speaker_id)
+                        speaker_count += 1
+                        if speaker_count >= 3: break
+    
+        weights = {}
+        scenario_id = conference.get("scenario")
+        if scenario_id and scenario_id in DISCUSSION_SCENARIOS:
+            role_emphasis = DISCUSSION_SCENARIOS[scenario_id].get("role_emphasis", {})
+            for p in participants_to_speak:
+                p_id = p["id"]
+                base_weight = role_emphasis.get(p_id, 1.0)
+                if p_id in last_speakers:
+                    position = last_speakers.index(p_id)
+                    penalty = 0.5 - (position * 0.1)
+                    weights[p_id] = base_weight * (1 - penalty)
+                else:
+                    weights[p_id] = base_weight
+    
+        if weights:
+            import random
+            for p_id in weights: weights[p_id] *= random.uniform(0.9, 1.1)
+            participants_to_speak.sort(key=lambda p: weights.get(p["id"], 1.0), reverse=True)
+        elif last_speakers:
             def get_participant_order(p):
-                if p["id"] in last_speakers:
-                    return last_speakers.index(p["id"]) - len(last_speakers)  # 負值，越靠後的發言者順序越小
-                return 0  # 非上一輪發言者
-            
-            participants.sort(key=get_participant_order, reverse=True)
+                if p["id"] in last_speakers: return last_speakers.index(p["id"]) - len(last_speakers)
+                return 0
+            participants_to_speak.sort(key=get_participant_order, reverse=True)
     
-    # 記錄本輪發言順序
-    speaker_order = [p["id"] for p in participants]
-    logger.info(f"輪次 {round_num} 發言順序: {speaker_order}")
+        speaker_order = [p["id"] for p in participants_to_speak]
+        logger.info(f"輪次 {round_num} 實際剩餘發言順序: {speaker_order}")
+        
+        # 更新上下文 (包含主席和可能的第一位發言者)
+        context_messages = conference["messages"][-15:] 
+        context = "\\n".join([f"{msg['speakerName']} ({msg['speakerTitle']}): {msg['text']}" for msg in context_messages])
+
+        # 讓剩下的參與者依次發言
+        for participant_data in participants_to_speak:
+            await check_pause(conference_id)
+            p_id = participant_data["id"]
+            p_name = participant_data["name"]
+            p_title = participant_data["title"]
     
-    # 獲取之前的對話上下文（最後N條消息）
-    context_messages = conference["messages"][-10:]  # 取最後10條消息作為上下文
-    context = "\n".join([f"{msg['speakerName']}：{msg['text']}" for msg in context_messages])
+            discussion_prompt = PROMPT_TEMPLATES["discussion"].format(
+                name=p_name,
+                title=p_title,
+                topic=main_topic,
+                round_topic=round_topic,
+                context=context
+            )
     
-    # 每位參與者依次發言
-    for participant in participants:
-        await check_pause(conference_id) # <--- 每個參與者循環開始時檢查
-        p_id = participant["id"]
-        p_name = participant["name"]
-        p_title = participant["title"]
-        
-        # 討論提示詞
-        # additional_notes = conference.get("additional_notes", "") # 已在函數開頭獲取
-        discussion_prompt = PROMPT_TEMPLATES["discussion"].format(
-            name=p_name,
-            title=p_title,
-            topic=main_topic,
-            round_topic=round_topic,
-            context=context
-        )
-        
-        # 如果有附註資料，加入提示詞
-        if additional_notes and additional_notes.strip():
-            discussion_prompt += f"\n\n補充資料：{additional_notes}"
-        
-        await check_pause(conference_id) # <--- 生成回應前檢查
-        # 生成參與者發言
-        response_text = await generate_ai_response(discussion_prompt, p_id, conference_id)
-        await check_pause(conference_id) # <--- 添加消息前檢查
-        await add_message(conference_id, p_id, response_text)
-        
-        # 更新上下文
-        context_messages = conference["messages"][-10:]
-        context = "\n".join([f"{msg['speakerName']}：{msg['text']}" for msg in context_messages])
-        
-        # 間隔一段時間，避免消息發送過快
-        await asyncio.sleep(2)
+            if additional_notes and additional_notes.strip():
+                discussion_prompt += f"\\n\\n補充資料參考：{additional_notes}" 
+    
+            await check_pause(conference_id)
+            response_text = await generate_ai_response(discussion_prompt, p_id, conference_id)
+            await check_pause(conference_id)
+            await add_message(conference_id, p_id, response_text)
+    
+            # 更新上下文
+            context_messages = conference["messages"][-15:]
+            context = "\\n".join([f"{msg['speakerName']} ({msg['speakerTitle']}): {msg['text']}" for msg in context_messages])
+            await asyncio.sleep(2)
 
     await check_pause(conference_id) # <--- 廣播完成前檢查
     await broadcast_message(conference_id, {
@@ -1556,7 +1679,7 @@ async def process_next_round(conference_id: str):
         await process_conclusion(conference_id)
 
 async def end_conference(conference_id: str):
-    """結束會議"""
+    """結束會議 - 直接結束，不生成結論"""
     logger.info(f"收到結束會議請求: {conference_id}")
     if conference_id not in active_conferences:
         logger.warning(f"嘗試結束不存在的會議: {conference_id}")
@@ -1565,39 +1688,13 @@ async def end_conference(conference_id: str):
     conference = active_conferences[conference_id]
     current_stage = conference.get("stage")
     logger.info(f"會議 {conference_id} 當前階段: {current_stage}")
-    
-    # 如果會議正在進行中 (非結束/錯誤/等待/暫停狀態)
-    if current_stage not in ["ended", "error", "waiting"]:
-        conference["stage"] = "ending" # 設置一個臨時狀態防止重入
-        # 如果會議還沒自然結束（結論階段未完成），先嘗試處理結論
-        if current_stage != "conclusion":
-            try:
-                logger.info(f"會議 {conference_id} 被手動結束，嘗試生成結論...")
-                await generate_conclusion(conference_id) # 確保結論流程執行
-            except Exception as e:
-                 logger.error(f"手動結束會議 {conference_id} 時生成結論失敗: {str(e)}")
-                 # 即使結論失敗，也要繼續結束流程
-        
-        # 在 generate_conclusion 後，狀態應該已變為 ended，但為確保安全，再次檢查和設置
-        if active_conferences.get(conference_id, {}).get("stage") != "ended":
-             logger.info(f"設置會議 {conference_id} 狀態為 ended")
-             await update_conference_stage(conference_id, "ended")
-        else:
-             logger.info(f"會議 {conference_id} 狀態已為 ended，確保廣播")
-             # 確保前端收到最終的 ended 狀態
-             await broadcast_message(conference_id, {
-                 "type": MESSAGE_TYPES["stage_change"],
-                 "stage": "ended"
-             })
-    elif current_stage == "paused":
-         # 如果是暫停狀態被要求結束，直接標記為 ended
-         logger.info(f"會議 {conference_id} 在暫停狀態下被結束，直接設置為 ended")
-         await update_conference_stage(conference_id, "ended")
-    else:
-         # 如果已經是 ended 或 error 或 waiting，記錄一下即可
-         logger.info(f"會議 {conference_id} 狀態為 {current_stage}，無需再次結束流程，僅清理連接。")
 
-    logger.info(f"會議 {conference_id} 已結束。")
+    # 無論處於哪個階段（進行中、暫停等），都直接設置為 ended
+    if current_stage != "ended":
+        logger.info(f"強制結束會議 {conference_id}，設置狀態為 ended")
+        await update_conference_stage(conference_id, "ended")
+    else:
+        logger.info(f"會議 {conference_id} 狀態已為 {current_stage}，無需再次結束流程，僅清理連接。")
 
     # 清理WebSocket連接
     if conference_id in connected_clients:
@@ -1606,17 +1703,18 @@ async def end_conference(conference_id: str):
         closed_count = 0
         for client in clients_to_close:
             try:
-                await client.close(code=1000, reason="Conference ended") # 使用標準關閉碼
+                await client.close(code=1000, reason="Conference ended by user") # 使用標準關閉碼並說明原因
                 closed_count += 1
             except Exception as e:
                 logger.warning(f"關閉客戶端 {client} 連接時出錯: {str(e)}")
-        
+
         # 清空連接列表
         if conference_id in connected_clients: # 再次檢查以防萬一
-             # 等待一小段時間確保客戶端有機會收到關閉幀
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1) # 等待客戶端處理關閉幀
             connected_clients[conference_id] = []
             logger.info(f"會議 {conference_id} 的 {closed_count}/{len(clients_to_close)} 個客戶端連接已關閉並移除。")
+
+    logger.info(f"會議 {conference_id} 已強制結束。")
 
 async def process_introductions(conference_id: str):
     """處理會議的自我介紹階段"""

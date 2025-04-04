@@ -1,4 +1,4 @@
-# FlyPig AI Virtual Conference System (v2.1.0)
+# FlyPig AI Virtual Conference System (v2.1.5)
 
 [![YouTube Video Presentation](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
@@ -8,7 +8,7 @@ FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeti
 
 ## Version History
 
-Current Version: v2.1.0
+Current Version: v2.1.5
 Major Updates:
 - Improved meeting pause/resume functionality, ensuring the conference flow actually stops and resumes.
 - Added an explicit "End Conference" button and corresponding backend logic to properly terminate meetings.
