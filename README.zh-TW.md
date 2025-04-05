@@ -1,4 +1,4 @@
-# 多智能體 AI 虛擬會議平台 (v0.2)
+# 多智能體 AI 虛擬會議平台 (MAAVMPv0.2)
 
 [![YouTube 影片演示](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
