@@ -1,4 +1,4 @@
-# Multi-AI-Agents V-Meeting Platform (v0.2)
+# Multi-AI-Agents V-Meeting Platform (MAAVMPv0.2)
 
 [![YouTube Video Presentation](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
