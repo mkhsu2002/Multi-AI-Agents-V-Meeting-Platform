@@ -1,332 +1,299 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MODERATOR_CONFIG, MESSAGE_TYPES, CONFERENCE_STAGES } from '../config/agents';
-import { startConference, createWebSocketConnection } from '../utils/api';
+import React, { createContext, useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getConference, getConferenceMessages, startConference as apiStartConference } from '../utils/api';
+import { MESSAGE_TYPES } from '../config/agents';
+import { toast } from 'react-toastify';
 
 const ConferenceContext = createContext();
 
 export const useConference = () => useContext(ConferenceContext);
 
-// 建立API和WebSocket的基本URL
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const WS_BASE_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
-
 export const ConferenceProvider = ({ children }) => {
-  const [config, setConfig] = useState(null);
+  const [currentConferenceId, setCurrentConferenceId] = useState(null);
+  const [conferenceData, setConferenceData] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [currentSpeaker, setCurrentSpeaker] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [conferenceStage, setConferenceStage] = useState('waiting');
+  const [stage, setStage] = useState('loading');
   const [currentRound, setCurrentRound] = useState(0);
-  const [conclusion, setConclusion] = useState(null);
-  const [socket, setSocket] = useState(null);
-  const [conferenceId, setConferenceId] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [currentSpeaker, setCurrentSpeaker] = useState(null);
+  const ws = useRef(null);
+  const navigate = useNavigate();
+  const lastMessageRef = useRef(null);
 
-  // 建立WebSocket連接
-  const connectSocket = (confId) => {
+  const connectSocket = useCallback((confId) => {
     if (!confId) return;
+    console.log(`嘗試連接 WebSocket: ${confId}`);
 
+    if (ws.current) {
+      ws.current.close();
+      console.log("已關閉舊的 WebSocket 連接");
+    }
+
+    const wsBaseUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000'; 
+    const wsUrl = `${wsBaseUrl}/ws/conference/${confId}`;
+    
     try {
-      // 關閉任何現有連接
-      if (socket) {
-        socket.close();
-      }
+      const newSocket = new WebSocket(wsUrl);
+      ws.current = newSocket;
 
-      const newSocket = new WebSocket(`${WS_BASE_URL}/ws/conference/${confId}`);
-      
       newSocket.onopen = () => {
-        console.log('WebSocket連接已建立');
-        setError(null); // 清除任何先前的錯誤
+        console.log(`WebSocket 連接已建立: ${confId}`);
+        setError(null);
       };
-      
+
       newSocket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log('收到WebSocket消息:', data);
-        
-        // 處理錯誤消息
-        if (data.type === MESSAGE_TYPES.ERROR) {
-          console.error('收到錯誤訊息:', data.message);
-          setError(data.message);
-          setIsLoading(false);
-          
-          // 如果錯誤是因為會議不存在，可以考慮重新創建會議
-          if (data.message === "會議不存在" && config) {
-            console.log('嘗試重新創建會議...');
-            // 延遲1秒後重新創建會議
-            setTimeout(() => {
-              startConference(config);
-            }, 1000);
-          }
-          return;
-        }
-        
-        switch (data.type) {
-          case MESSAGE_TYPES.INIT:
-            setMessages(data.messages || []);
-            setConferenceStage(data.stage || 'waiting');
-            setCurrentRound(data.current_round || 0);
-            setConclusion(data.conclusion);
+        try {
+          const data = JSON.parse(event.data);
+          console.log('收到 WebSocket 消息:', data);
+
+          if (data.type === MESSAGE_TYPES.ERROR) {
+            console.error('收到錯誤訊息:', data.message);
+            setError(data.message);
             setIsLoading(false);
-            break;
-            
-          case MESSAGE_TYPES.NEW_MESSAGE:
-            setMessages(prev => [...prev, data.message]);
-            setCurrentSpeaker(data.current_speaker);
-            break;
-            
-          case MESSAGE_TYPES.STAGE_CHANGE:
-            setConferenceStage(data.stage);
-            break;
-            
-          case MESSAGE_TYPES.ROUND_UPDATE:
-            setCurrentRound(data.round);
-            break;
-            
-          case MESSAGE_TYPES.ROUND_COMPLETED:
-            // 當一輪討論完成時，可能需要在UI上提示用戶
-            console.log('當前輪次討論已完成');
-            break;
-            
-          case MESSAGE_TYPES.CONCLUSION:
-            // 處理會議結論
-            setConclusion(data.text);
-            break;
-            
-          default:
-            console.log('未處理的WebSocket消息類型:', data.type);
-        }
-      };
-      
-      newSocket.onerror = (error) => {
-        console.error('WebSocket錯誤:', error);
-        setError('WebSocket連接錯誤，請檢查後端服務是否正在運行，或者嘗試刷新頁面。');
-        setIsLoading(false);
-        
-        // 嘗試在短暫延遲後進行自動重連
-        setTimeout(() => {
-          if (confId && config) {
-            console.log('WebSocket錯誤後自動嘗試重連...');
-            connectSocket(confId);
+            return;
           }
-        }, 5000); // 5秒後嘗試重連
+
+          switch (data.type) {
+            case MESSAGE_TYPES.INIT:
+              setMessages(data.messages || []);
+              setStage(data.stage || 'waiting');
+              setCurrentRound(data.current_round || 0);
+              setIsLoading(false);
+              break;
+            case MESSAGE_TYPES.NEW_MESSAGE:
+              setMessages(prev => [...prev, data.message]);
+              setCurrentSpeaker(data.current_speaker);
+              setTimeout(() => lastMessageRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+              break;
+            case MESSAGE_TYPES.STAGE_CHANGE:
+              setStage(data.stage);
+              setIsLoading(false);
+              break;
+            case MESSAGE_TYPES.ROUND_UPDATE:
+              setCurrentRound(data.round);
+              break;
+            case MESSAGE_TYPES.ROUND_COMPLETED:
+              console.log('當前輪次討論已完成');
+              break;
+            default:
+              console.log('未處理的 WebSocket 消息類型:', data.type);
+          }
+        } catch (parseError) {
+          console.error('解析 WebSocket 消息失敗:', parseError, '原始數據:', event.data);
+        }
       };
-      
+
+      newSocket.onerror = (errorEvent) => {
+        console.error('WebSocket 錯誤:', errorEvent);
+        setError('WebSocket 連接錯誤，請檢查後端服務或網絡連接。');
+        setIsLoading(false);
+      };
+
       newSocket.onclose = (event) => {
-        console.log(`WebSocket連接已關閉，代碼: ${event.code}, 原因: ${event.reason}`);
+        console.log(`WebSocket 連接已關閉，代碼: ${event.code}, 原因: ${event.reason}`);
+        setIsLoading(false); 
+        setStage(prevStage => prevStage !== 'ended' ? 'ended' : 'ended'); 
         
-        if (event.code === 1011) {
-          // 伺服器內部錯誤，顯示具體錯誤原因
-          setError(`伺服器內部錯誤: ${event.reason || '未知錯誤'}，請聯繫管理員或稍後再試。`);
-          return;
+        if (!event.wasClean && currentConferenceId) {
+          setError("WebSocket 連接意外斷開。"); 
+          console.warn("WebSocket 連接意外斷開");
         }
         
-        // 如果是正常關閉，不需處理
-        if (event.code === 1000) {
-          return;
-        }
-        
-        // 如果是非正常關閉，且有配置，嘗試重新連接
-        if (config && !event.wasClean) {
-          console.log('嘗試重新連接...');
-          setTimeout(() => {
-            if (confId) {
-              // 先嘗試直接重連
-              connectSocket(confId);
-            } else if (config) {
-              // 如果沒有會議ID，嘗試重新創建會議
-              startConference(config);
-            }
-          }, 3000); // 延遲3秒後重試
+        if (ws.current === newSocket) { 
+          ws.current = null;
         }
       };
-      
-      setSocket(newSocket);
-      
     } catch (err) {
-      console.error('建立WebSocket連接時出錯:', err);
-      setError('無法連接到會議服務，請檢查後端服務是否正在運行。若問題持續存在，請嘗試刷新頁面或重新啟動應用。');
+      console.error('創建 WebSocket 連接失敗:', err);
+      setError('無法創建 WebSocket 連接。');
       setIsLoading(false);
     }
-  };
+  }, [currentConferenceId]);
 
-  // 啟動會議
-  const startConference = async (configData) => {
+  const loadConference = useCallback(async (confId) => {
+    if (!confId) return;
+    console.log(`加載會議數據: ${confId}`);
+    setIsLoading(true);
+    setError(null);
+    setMessages([]);
+    setCurrentConferenceId(confId);
     try {
-      setConfig(configData);
-      setIsLoading(true);
-      setError(null);
+      const data = await getConference(confId);
+      setConferenceData(data);
+      setStage(data.stage || 'waiting');
+      setCurrentRound(data.current_round || 0);
       
-      // 添加主持人
-      const configWithModerator = {
-        ...configData,
-        participants: [
-          MODERATOR_CONFIG,
-          ...configData.participants
-        ]
-      };
-      
-      // 發送API請求創建會議
-      const response = await fetch(`${API_BASE_URL}/api/conference/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(configWithModerator),
-      });
-      
-      const data = await response.json();
-      console.log('收到會議創建響應:', data);
-      
-      if (!response.ok || !data.conference_id) {
-        throw new Error(data.error || data.detail || '創建會議失敗');
-      }
-      
-      // 保存會議ID
-      setConferenceId(data.conference_id);
-      
-      // 連接WebSocket
-      connectSocket(data.conference_id);
-      
-      return {
-        success: true,
-        conferenceId: data.conference_id
-      };
-      
+      connectSocket(confId);
     } catch (err) {
-      console.error('啟動會議時出錯:', err);
+      console.error('加載會議數據失敗:', err);
+      setError('加載會議數據失敗: ' + err.message);
       setIsLoading(false);
-      setError(err.message || '啟動會議時發生錯誤');
-      return {
-        success: false,
-        error: err.message || '啟動會議時發生錯誤'
-      };
+      setCurrentConferenceId(null);
     }
-  };
+  }, [navigate, connectSocket]);
 
-  // 進入下一輪討論
-  const nextRound = () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: MESSAGE_TYPES.NEXT_ROUND }));
-    } else {
-      setError('WebSocket連接已關閉，無法進入下一輪討論');
-    }
-  };
-
-  // 結束會議
-  const endConference = () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: MESSAGE_TYPES.END_CONFERENCE }));
-    } else {
-      setError('WebSocket連接已關閉，無法結束會議');
-    }
-  };
-
-  // 暫停會議
-  const pauseConference = () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: MESSAGE_TYPES.PAUSE_CONFERENCE }));
-    } else {
-      setError('WebSocket連接已關閉，無法暫停會議');
-    }
-  };
-
-  // 恢復會議
-  const resumeConference = () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: MESSAGE_TYPES.RESUME_CONFERENCE }));
-    } else {
-      setError('WebSocket連接已關閉，無法恢復會議');
-    }
-  };
-
-  // 匯出會議記錄
-  const exportRecord = () => {
-    // 格式化會議記錄
-    let record = `# 會議記錄\n\n`;
-    record += `## 主題: ${config.topic}\n\n`;
-    
-    // 添加會議模式信息
-    let scenarioName = '標準商務會議';
-    if (config.scenario) {
-      // 將scenario_id轉換為更友好的顯示名稱
-      switch (config.scenario) {
-        case 'brainstorming':
-          scenarioName = '腦力激盪模式';
-          break;
-        case 'board_meeting':
-          scenarioName = '董事會議模式';
-          break;
-        case 'debate':
-          scenarioName = '辯論大會模式';
-          break;
-        case 'creative_chain':
-          scenarioName = '創作接龍模式';
-          break;
-        default:
-          scenarioName = config.scenario; // 如果找不到特定名稱，使用原始值
+  const startConference = useCallback(async (config) => {
+    console.log("ConferenceContext: 嘗試啟動會議", config);
+    setIsLoading(true);
+    setError(null);
+    setMessages([]);
+    try {
+      const result = await apiStartConference(config);
+      console.log("後端返回的啟動結果:", result);
+      if (result && result.success && result.conference_id) {
+        const newConferenceId = result.conference_id;
+        setCurrentConferenceId(newConferenceId);
+        setConferenceData({ config: config, id: newConferenceId, ...result });
+        setStage('waiting');
+        setCurrentRound(0);
+        connectSocket(newConferenceId);
+        console.log(`會議 ${newConferenceId} 成功啟動，正在連接 WebSocket...`);
+        return { success: true, conferenceId: newConferenceId };
+      } else {
+        const errorMsg = result?.error || result?.message || '啟動會議失敗，後端未返回有效數據';
+        console.error('啟動會議失敗:', errorMsg);
+        setError(errorMsg);
+        setIsLoading(false);
+        return { success: false, error: errorMsg };
       }
+    } catch (err) {
+      console.error('啟動會議時發生錯誤:', err);
+      const errorMsg = err.response?.data?.detail || err.message || '啟動會議時發生未知網絡或服務器錯誤';
+      setError(errorMsg);
+      setIsLoading(false);
+      return { success: false, error: errorMsg };
     }
-    record += `## 會議模式: ${scenarioName}\n\n`;
-    
-    record += `## 參與者:\n`;
-    
-    config.participants.forEach(p => {
-      if (p.isActive) {
-        record += `- ${p.name} (${p.title})\n`;
+  }, [connectSocket]);
+
+  const sendWsMessage = useCallback((message) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify(message));
+    } else {
+      console.error('WebSocket 未連接，無法發送消息:', message);
+      setError("WebSocket 連接已斷開，無法發送指令。");
+    }
+  }, []);
+
+  const pauseConference = useCallback(() => {
+    sendWsMessage({ type: MESSAGE_TYPES.PAUSE_CONFERENCE });
+  }, [sendWsMessage]);
+
+  const resumeConference = useCallback(() => {
+    sendWsMessage({ type: MESSAGE_TYPES.RESUME_CONFERENCE });
+  }, [sendWsMessage]);
+
+  const manualEndConference = useCallback(async () => {
+    console.log("ConferenceContext: 手動請求結束會議...");
+    setIsLoading(true);
+    setError(null);
+    try {
+      sendWsMessage({ type: MESSAGE_TYPES.END_CONFERENCE });
+      console.log("結束會議指令已發送");
+    } catch (err) {
+      console.error("發送結束會議指令時發生錯誤:", err);
+      setError(`發送結束指令失敗: ${err.message || '未知錯誤'}`);
+      setIsLoading(false); 
+    }
+  }, [sendWsMessage, navigate]);
+
+  const exportRecord = useCallback(() => {
+    console.log("請求匯出會議記錄...");
+
+    if (!messages || messages.length === 0) {
+      toast.warn("沒有會議記錄可供匯出。");
+      console.warn("沒有會議記錄可供匯出。");
+      return;
+    }
+
+    if (stage !== 'ended') {
+      console.log(`會議狀態為 ${stage}，嘗試強制結束...`);
+      toast.info("正在強制結束會議並準備下載...");
+      manualEndConference();
+    } else {
+       toast.info("準備下載會議記錄...");
+    }
+
+    let recordContent = `會議記錄\n`;
+    recordContent += `==============================\n`;
+    if (conferenceData) {
+      const config = conferenceData.config || {};
+      recordContent += `會議 ID: ${conferenceData.id || '未知'}\n`;
+      recordContent += `主題: ${config.topic || '未指定'}\n`;
+      recordContent += `模式: ${config.scenario || '未知'}\n`;
+      recordContent += `回合數: ${config.rounds || '未知'}\n`;
+      recordContent += `開始時間: ${conferenceData.start_time ? new Date(conferenceData.start_time).toLocaleString() : '未知'}\n`;
+
+      if (config.participants && config.participants.length > 0) {
+        recordContent += `\n--- 參與者 ---\n`;
+        config.participants.forEach(p => {
+          recordContent += `- ${p.name} (${p.title})${p.isActive ? '' : ' (未啟用)'}\n`;
+        });
       }
-    });
-    
-    // 如果有附註補充資料，添加到記錄中
-    if (config.additional_notes && config.additional_notes.trim()) {
-      record += `\n## 附註補充資料:\n${config.additional_notes}\n\n`;
+    } else {
+      recordContent += `會議基本資訊未知。\n`;
     }
-    
-    record += `\n## 對話內容:\n\n`;
-    
+    recordContent += `==============================\n\n`;
+    recordContent += `--- 對話記錄 ---\n\n`;
+
     messages.forEach(msg => {
-      const time = new Date(msg.timestamp).toLocaleTimeString();
-      record += `### ${time} - ${msg.speakerName} (${msg.speakerTitle}):\n${msg.text}\n\n`;
+      const timestamp = new Date(msg.timestamp).toLocaleString();
+      recordContent += `[${timestamp}] ${msg.speakerName} (${msg.speakerTitle}):\n`;
+      recordContent += `${msg.text}\n\n`;
     });
-    
-    if (conclusion) {
-      record += `## 會議結論:\n\n${conclusion}\n`;
-    }
-    
-    // 建立並下載文件
-    const blob = new Blob([record], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `會議記錄-${config.topic}-${new Date().toISOString().slice(0, 10)}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 
-  // 清理資源
+    recordContent += `--- 記錄結束 ---\n`;
+
+    try {
+      const blob = new Blob([recordContent], { type: 'text/plain;charset=utf-8' });
+      const conferenceIdShort = currentConferenceId ? currentConferenceId.substring(0, 8) : 'unknown';
+      const timestampStr = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `conference_record_${conferenceIdShort}_${timestampStr}.txt`;
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+
+      console.log(`會議記錄已觸發下載: ${filename}`);
+
+    } catch (exportError) {
+      console.error("匯出會議記錄時發生錯誤:", exportError);
+      setError(`匯出會議記錄失敗: ${exportError.message}`);
+      toast.error("匯出會議記錄失敗！");
+    }
+
+  }, [messages, stage, conferenceData, currentConferenceId, manualEndConference, setError]);
+
   useEffect(() => {
     return () => {
-      if (socket) {
-        socket.close();
+      if (ws.current) {
+        console.log("ConferenceProvider 卸載，關閉 WebSocket");
+        ws.current.close();
+        ws.current = null;
       }
     };
-  }, [socket]);
+  }, []);
 
   const value = {
-    config,
+    conferenceData,
     messages,
-    currentSpeaker,
-    isLoading,
-    conferenceStage,
+    stage,
     currentRound,
-    conclusion,
+    isLoading,
     error,
+    currentSpeaker,
+    lastMessageRef,
+    loadConference,
     startConference,
-    nextRound,
-    endConference,
+    sendMessage: sendWsMessage,
     pauseConference,
     resumeConference,
+    endConference: manualEndConference,
     exportRecord
   };
 

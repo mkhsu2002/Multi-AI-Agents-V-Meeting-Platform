@@ -11,12 +11,46 @@ scenario_config = {
         4: "總結陳詞：各方總結自己的論點，並嘗試找出可能的共識或妥協方案"
     },
     "role_emphasis": {
-        "General manager": 1.0,       # 保持正常權重
-        "Business manager": 1.0,       # 保持正常權重
-        "Marketing manager": 1.2,     # 適度增強行銷角色的發言權重
-        "Financial manager": 1.0,  # 保持正常權重
-        "R&D director": 1.2,   # 適度增強技術角色的發言權重
-        "HR": 1.0    # 保持正常權重
+        "R&D director": 1.5,    # 技術/產品方
+        "Financial manager": 1.5, # 財務/成本方
+        "Marketing manager": 1.1, # 市場/用戶方，可加入辯論
+        "Business manager": 1.1,  # 業務/落地方，可加入辯論
+        "General manager": 1.0,   # 主持或平衡角色
+        "HR": 0.8,              # 辯論中權重較低
     },
-    "discussion_guidance": "在辯論大會情境中，參與者應當清晰表達自己的立場，提供有力的論據支持，積極回應和挑戰他人的觀點，但始終保持尊重和理性。"
+    "discussion_guidance": "針對辯題，清晰陳述己方觀點並提供論據。仔細聆聽對方論點，找出邏輯漏洞或提出反駁。保持理性，避免人身攻擊，以理服人。",
+    # 新增：核心智能體列表 (設計成兩方)
+    "core_agents": [
+        {
+            "id": "R&D director",
+            "name": "飛豬研發總監 (正方)",
+            "title": "研發總監",
+            "personality": "邏輯性強、堅持技術理想、數據導向",
+            "expertise": "技術可行性、產品優勢、創新價值",
+            "isActive": True,
+            "temperature": 0.6,
+            "rolePrompt": "我是飛豬隊友 (FlyPig AI) 技術創新的領頭豬，我的豬腦袋裝滿了最新的技術知識，不斷鑽研，力求為我們的團隊開發出更領先的產品。團隊的智慧是無窮的，一起來攻克技術難關吧！在辯論中，我將堅守技術的價值與可能性。"
+        },
+        {
+            "id": "Financial manager",
+            "name": "飛豬財務經理 (反方)",
+            "title": "財務經理",
+            "personality": "理性、注重成本效益、風險規避",
+            "expertise": "財務模型、成本分析、投資回報、風險評估",
+            "isActive": True,
+            "temperature": 0.6,
+            "rolePrompt": "我是飛豬隊友 (FlyPig AI) 的財政管家，我的豬算盤算得清清楚楚，確保我們團隊的每一分錢都用在刀刃上，為團隊的發展保駕護航。團結一心，共同管理好我們的財富！在辯論中，我將從財務可行性和風險角度提出質疑。"
+        },
+        # 可以選擇性加入其他角色作為輔助或中立方
+        {
+            "id": "Marketing manager",
+            "name": "飛豬行銷經理 (中立/市場方)",
+            "title": "行銷經理",
+            "personality": "關注用戶、市場反應、靈活變通",
+            "expertise": "市場接受度、用戶需求、品牌影響",
+            "isActive": True,
+            "temperature": 0.7,
+            "rolePrompt": "我是飛豬隊友 (FlyPig AI) 行銷策略的智囊，我的豬腦袋裡充滿了各種新奇點子，旨在提升我們團隊的品牌影響力。一起集思廣益，讓我們的飛豬形象深入人心！在辯論中，我將提供市場和用戶的視角。"
+        }
+    ]
 } 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, WebSocket, Request
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, WebSocket, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -18,31 +18,40 @@ from starlette.websockets import WebSocketDisconnect
 from app.config import ROLE_PROMPTS, MODERATOR_CONFIG, AI_CONFIG, PROMPT_TEMPLATES, ROUND_TOPICS, MESSAGE_TYPES
 # 引入新的動態場景模組
 from app.scenarios import DISCUSSION_SCENARIOS, SCENARIO_INFO, DEFAULT_SCENARIO, SCENARIO_SELECTION_GUIDE
+import importlib # 用於重新載入模組
+import re # 用於清理檔名生成 ID
+import pprint # 用於格式化 Python 代碼字串
 
 # 載入環境變數
 load_dotenv()
 
 # 配置日誌
-log_level_str = os.getenv("LOG_LEVEL", "INFO")
-log_file = os.getenv("LOG_FILE", "app/logs/app.log")
+log_directory = "app/logs"
+os.makedirs(log_directory, exist_ok=True)
+log_file_path = os.path.join(log_directory, "app.log")
 
-# 將字符串日誌級別轉換為對應的logging級別
-log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+# 移除可能存在的舊 Handler
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
 
-# 確保日誌目錄存在
-os.makedirs(os.path.dirname(log_file), exist_ok=True)
-
-# 設置日誌配置
 logging.basicConfig(
-    level=log_level,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler()
+        logging.StreamHandler(),
+        logging.FileHandler(log_file_path)
     ]
 )
 logger = logging.getLogger(__name__)
-logger.info(f"日誌級別設置為 {log_level_str}，日誌文件路徑為 {log_file}")
+
+logger.info("日誌級別設置為 DEBUG")
+logger.info(f"日誌級別設置為 DEBUG，日誌文件路徑為 {log_file_path}")
+
+# 檢查 OpenAI API 密鑰
+if not os.getenv("OPENAI_API_KEY"):
+    logger.warning("未設置 OPENAI_API_KEY 環境變數，LLM 功能將不可用")
+else:
+    logger.info("OpenAI API密鑰已設置")
 
 # 創建FastAPI應用
 app = FastAPI(
@@ -744,15 +753,150 @@ async def test_message(request: TestMessageRequest):
 @app.get("/api/scenarios")
 def get_scenarios():
     """獲取可用的研討情境模組列表"""
+    # 確保 DISCUSSION_SCENARIOS 是最新的
+    from app.scenarios import DISCUSSION_SCENARIOS, DEFAULT_SCENARIO
+    
+    # 重新整理 SCENARIO_INFO，確保與 DISCUSSION_SCENARIOS 同步
+    updated_scenario_info = [
+        {
+            "id": s_id,
+            "name": config.get("name", s_id),
+            "description": config.get("description", "")
+        } for s_id, config in DISCUSSION_SCENARIOS.items()
+    ]
+    
     return {
-        "scenarios": SCENARIO_INFO,
+        "scenarios": updated_scenario_info, # 返回更新後的列表
         "default": DEFAULT_SCENARIO,
         "selection_guide": SCENARIO_SELECTION_GUIDE
     }
 
+# === 新增：下載研討模式設定包 API ===
+@app.get("/api/scenario/{scenario_id}/package")
+def download_scenario_package(scenario_id: str):
+    """下載指定研討模式的設定包（包含模式設定和核心智能體）"""
+    from app.scenarios import DISCUSSION_SCENARIOS # 確保訪問最新數據
+    
+    if scenario_id not in DISCUSSION_SCENARIOS:
+        logger.error(f"請求下載不存在的研討模式包: {scenario_id}")
+        raise HTTPException(status_code=404, detail=f"找不到 ID 為 '{scenario_id}' 的研討模式")
+    
+    scenario_config = DISCUSSION_SCENARIOS[scenario_id]
+    
+    # 準備檔名
+    filename = f"{scenario_id}_package.json"
+    
+    logger.info(f"準備下載研討模式包: {scenario_id}，檔名: {filename}")
+    
+    # 使用 JSONResponse 並設置 Content-Disposition header
+    return JSONResponse(
+        content=scenario_config,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+# === API 新增結束 ===
+
+# === 新增：上傳研討模式設定包 API ===
+@app.post("/api/scenario/package/upload")
+async def upload_scenario_package(file: UploadFile = File(...)):
+    """上傳研討模式設定包（JSON檔案），創建或更新對應的 .py 檔案，如果ID衝突則創建新版本。""" # <-- 更新 docstring
+    # 1. 檢查檔案類型 (不變)
+    if not file.filename.endswith(".json"):
+        logger.error(f"上傳的檔案非 JSON 格式: {file.filename}")
+        raise HTTPException(status_code=400, detail="僅允許上傳 .json 格式的檔案")
+
+    # 2. 讀取並解析 JSON (不變)
+    try:
+        content = await file.read()
+        scenario_data = json.loads(content.decode("utf-8"))
+    except json.JSONDecodeError:
+        logger.error(f"無法解析上傳的 JSON 檔案: {file.filename}")
+        raise HTTPException(status_code=400, detail="無法解析 JSON 檔案，請檢查格式")
+    except Exception as e:
+        logger.error(f"讀取上傳檔案時發生錯誤: {file.filename}, 錯誤: {e}")
+        raise HTTPException(status_code=500, detail=f"讀取檔案時發生錯誤: {e}")
+
+    # 3. 基本數據驗證 (不變)
+    if not isinstance(scenario_data, dict):
+        raise HTTPException(status_code=400, detail="JSON 內容必須是一個物件/字典")
+    required_keys = ["name", "description", "system_prompt", "round_structure", "role_emphasis", "discussion_guidance", "core_agents"]
+    missing_keys = [key for key in required_keys if key not in scenario_data]
+    if missing_keys:
+        raise HTTPException(status_code=400, detail=f"JSON 內容缺少必要的鍵: {', '.join(missing_keys)}")
+    if not isinstance(scenario_data.get("core_agents"), list):
+        raise HTTPException(status_code=400, detail="'core_agents' 必須是一個列表")
+
+    # 4. 從檔名生成初始 Scenario ID (不變)
+    base_filename = os.path.splitext(file.filename)[0]
+    base_filename = re.sub(r'_package$|_config$', '', base_filename, flags=re.IGNORECASE)
+    original_scenario_id = re.sub(r'[^a-zA-Z0-9_]', '', base_filename)
+    if not original_scenario_id or original_scenario_id[0].isdigit():
+        original_scenario_id = f"custom_{original_scenario_id if original_scenario_id else uuid.uuid4().hex[:8]}"
+    original_scenario_id = original_scenario_id.lower()
+    logger.info(f"從檔名 '{file.filename}' 生成初始 Scenario ID: '{original_scenario_id}'")
+
+    # 5. 生成 Python 程式碼字串 (不變)
+    scenario_config_str = f"scenario_config = {pprint.pformat(scenario_data, indent=4)}"
+
+    # 6. 確定最終 Scenario ID 和文件路徑（處理衝突）
+    scenarios_dir = os.path.join(os.path.dirname(__file__), "scenarios")
+    os.makedirs(scenarios_dir, exist_ok=True)
+
+    final_scenario_id = original_scenario_id
+    file_path = os.path.join(scenarios_dir, f"{final_scenario_id}.py")
+    counter = 1
+    
+    # 檢查文件是否存在，如果存在則嘗試添加後綴
+    while os.path.exists(file_path):
+        final_scenario_id = f"{original_scenario_id}_{counter}"
+        file_path = os.path.join(scenarios_dir, f"{final_scenario_id}.py")
+        counter += 1
+        logger.info(f"Scenario ID '{original_scenario_id}' 已存在，嘗試使用新 ID: '{final_scenario_id}'")
+
+    logger.info(f"最終確定的 Scenario ID: '{final_scenario_id}'，文件路徑: {file_path}")
+
+    # 7. 寫入 .py 檔案 (使用 final_scenario_id 和 file_path)
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(f"# backend/app/scenarios/{final_scenario_id}.py\n\n") # <-- 使用最終 ID
+            f.write(scenario_config_str)
+            f.write("\n")
+        logger.info(f"成功將研討模式 '{final_scenario_id}' 寫入檔案: {file_path}") # <-- 使用最終 ID
+    except IOError as e:
+        logger.error(f"寫入研討模式檔案失敗: {file_path}, 錯誤: {e}")
+        raise HTTPException(status_code=500, detail=f"寫入檔案失敗: {e}")
+
+    # 8. 重新載入所有研討模式 (不變)
+    try:
+        from app import scenarios
+        scenarios.load_scenarios()
+        logger.info(f"已觸發重新載入研討模式，新模式 '{final_scenario_id}' 應已生效。") # <-- 使用最終 ID
+    except Exception as e:
+        logger.error(f"重新載入研討模式時發生錯誤: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=201,
+            content={
+                "success": True,
+                "message": f"研討模式 '{final_scenario_id}' 已成功創建，但在動態載入時遇到問題。可能需要重新啟動後端服務才能完全生效。", # <-- 使用最終 ID
+                "scenario_id": final_scenario_id, # <-- 使用最終 ID
+                "warning": str(e)
+            }
+        )
+
+    # 9. 返回成功響應 (使用 final_scenario_id)
+    return {
+        "success": True,
+        "message": f"研討模式 '{final_scenario_id}' 已成功創建並重新載入。", # <-- 使用最終 ID
+        "scenario_id": final_scenario_id # <-- 返回最終確定的 ID
+    }
+# === API 修改結束 ===
+
 @app.post("/api/conference/start")
 async def start_conference(config: ConferenceConfig, background_tasks: BackgroundTasks):
     """開始一個新的會議"""
+    # 確保 DISCUSSION_SCENARIOS 是最新的
+    from app.scenarios import DISCUSSION_SCENARIOS, DEFAULT_SCENARIO
     conference_id = str(uuid.uuid4())
     
     # 驗證情境模組
@@ -1623,22 +1767,25 @@ async def add_message(conference_id: str, speaker_id: str, text: str):
         return
     
     participant = None
-    for p in conference["config"]["participants"]:
-        if p["id"] == speaker_id:
-            participant = p
-            break
-    
+    # 從 config 中查找，確保數據一致性
+    if speaker_id in conference.get("participants", {}):
+        participant = conference["participants"][speaker_id]
+
+    # 簡化查找邏輯：直接從 participants 字典查找，它應該包含 moderator
     if not participant:
-        if speaker_id == "moderator":
-            participant = {
-                "id": MODERATOR_CONFIG["id"],
-                "name": MODERATOR_CONFIG["name"],
-                "title": MODERATOR_CONFIG["title"]
-            }
-        else:
-            logger.error(f"找不到ID為 {speaker_id} 的參與者")
-            return
+         logger.error(f"在會議 {conference_id} 的 participants 字典中找不到 ID 為 {speaker_id} 的參與者")
+         # 創建一個臨時的 participant 信息以避免錯誤，但記錄警告
+         participant = {
+             "id": speaker_id,
+             "name": f"未知參與者 ({speaker_id})",
+             "title": "未知職位"
+         }
     
+    # === 新增：詳細日誌 ===
+    log_text_preview = text[:50].replace('\n', ' ') + ('...' if len(text) > 50 else '')
+    logger.debug(f"會議 {conference_id} 添加消息 - 發言者ID: {speaker_id}, 姓名: {participant.get('name', '未知')}, 預覽: \"{log_text_preview}\"")
+    # === 日誌結束 ===
+
     message = {
         "id": str(uuid.uuid4()),
         "speakerId": speaker_id,
@@ -1845,6 +1992,57 @@ async def resume_conference(conference_id: str):
     })
     
     logger.info(f"會議 {conference_id} 已恢復到階段: {previous_stage}")
+
+# === 新增：刪除研討模式設定 API ===
+@app.delete("/api/scenario/{scenario_id}")
+def delete_scenario(scenario_id: str):
+    """刪除指定的研討模式 .py 檔案"""
+    from app.scenarios import DEFAULT_SCENARIO, load_scenarios # 引入預設值和重新載入函數
+
+    # 1. 禁止刪除預設模式
+    if scenario_id == DEFAULT_SCENARIO:
+        logger.warning(f"嘗試刪除預設研討模式: {scenario_id}，操作被阻止。")
+        raise HTTPException(status_code=403, detail=f"禁止刪除預設研討模式 '{DEFAULT_SCENARIO}'")
+
+    # 2. 構造文件路徑
+    scenarios_dir = os.path.join(os.path.dirname(__file__), "scenarios")
+    file_path = os.path.join(scenarios_dir, f"{scenario_id}.py")
+
+    # 3. 檢查文件是否存在
+    if not os.path.exists(file_path):
+        logger.error(f"嘗試刪除不存在的研討模式檔案: {file_path}")
+        raise HTTPException(status_code=404, detail=f"找不到 ID 為 '{scenario_id}' 的研討模式檔案")
+
+    # 4. 執行刪除
+    try:
+        os.remove(file_path)
+        logger.info(f"成功刪除研討模式檔案: {file_path}")
+    except OSError as e:
+        logger.error(f"刪除研討模式檔案失敗: {file_path}, 錯誤: {e}")
+        raise HTTPException(status_code=500, detail=f"刪除檔案時發生錯誤: {e}")
+
+    # 5. 重新載入所有研討模式
+    try:
+        load_scenarios()
+        logger.info(f"已觸發重新載入研討模式，模式 '{scenario_id}' 已被移除。")
+    except Exception as e:
+        logger.error(f"重新載入研討模式時發生錯誤 (在刪除 '{scenario_id}' 之後): {e}", exc_info=True)
+        # 即使重新載入失敗，文件已刪除，所以仍然返回某種程度的成功
+        return JSONResponse(
+            status_code=200, # 或者 202 Accepted
+            content={
+                "success": True,
+                "message": f"研討模式 '{scenario_id}' 的檔案已成功刪除，但在動態重新載入時遇到問題。可能需要重新啟動後端服務才能完全反映。",
+                "warning": str(e)
+            }
+        )
+
+    # 6. 返回成功響應
+    return {
+        "success": True,
+        "message": f"研討模式 '{scenario_id}' 已成功刪除並重新載入。"
+    }
+# === API 新增結束 ===
 
 if __name__ == "__main__":
     import uvicorn

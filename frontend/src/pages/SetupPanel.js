@@ -1,281 +1,380 @@
-import React, { useState, useEffect } from 'react';
-import { fetchScenarios } from '../utils/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button, Select, Input, Textarea, IconButton, Tooltip, Box, Flex, Text, useToast, AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader, AlertDialogContent, AlertDialogOverlay, useDisclosure, FormControl, FormLabel, NumberInput, NumberInputField, NumberInputStepper, NumberIncrementStepper, NumberDecrementStepper } from '@chakra-ui/react';
+import { DownloadIcon, ArrowUpIcon, EditIcon, DeleteIcon } from '@chakra-ui/icons';
+import axios from 'axios';
+import { fetchScenarios, startConference } from '../utils/api';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import AgentSelector from '../components/AgentSelector';
+import AgentEditModal from '../components/modals/AgentEditModal';
 
 const SetupPanel = ({ initialConfig, onStart }) => {
   const [config, setConfig] = useState(initialConfig);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [scenarios, setScenarios] = useState({});
-  const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
+  const [scenarios, setScenarios] = useState([]);
+  const [defaultScenario, setDefaultScenario] = useState('');
+  const [scenarioSelectionGuide, setScenarioSelectionGuide] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEditingAgent, setIsEditingAgent] = useState(null);
+  const navigate = useNavigate();
 
-  // 在組件加載時獲取情境模組列表
-  useEffect(() => {
-    const loadScenarios = async () => {
-      setIsLoadingScenarios(true);
-      try {
-        const data = await fetchScenarios();
-        setScenarios(data);
-        // 如果初始配置中沒有指定情境，設置為預設情境
-        if (!config.scenario && data.default) {
-          setConfig({ ...config, scenario: data.default });
-        }
-      } catch (error) {
-        console.error('獲取情境模組失敗:', error);
-      } finally {
-        setIsLoadingScenarios(false);
+  const fileInputRef = useRef(null);
+
+  const { isOpen: isDeleteDialogOpen, onOpen: onOpenDeleteDialog, onClose: onCloseDeleteDialog } = useDisclosure();
+  const cancelRef = useRef();
+  const [scenarioToDelete, setScenarioToDelete] = useState(null);
+
+  const loadAgentData = () => {
+    try {
+      const savedAgents = localStorage.getItem('agents');
+      const loadedParticipants = savedAgents ? JSON.parse(savedAgents) : [];
+      const participantsWithActive = loadedParticipants.map(p => ({ 
+        ...p, 
+        isActive: p.isActive !== undefined ? p.isActive : true 
+      }));
+      setConfig(prev => ({ ...prev, participants: participantsWithActive }));
+    } catch (error) {
+      console.error('Failed to load agents from localStorage:', error);
+      toast.error('加載智能體數據失敗');
+    }
+  };
+
+  const loadScenarios = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchScenarios();
+      setScenarios(data.scenarios);
+      setDefaultScenario(data.default);
+      setScenarioSelectionGuide(data.selection_guide || '');
+      if (!config.scenario || !data.scenarios.find(s => s.id === config.scenario)) {
+        setConfig(prev => ({
+          ...prev,
+          scenario: data.default
+        }));
       }
-    };
+    } catch (error) {
+      console.error('Failed to fetch scenarios:', error);
+      toast.error('加載研討模式列表失敗');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    loadAgentData();
     loadScenarios();
+    window.addEventListener('agentDataChanged', loadAgentData);
+    return () => window.removeEventListener('agentDataChanged', loadAgentData);
   }, []);
 
-  // 處理主題變更
-  const handleTopicChange = (e) => {
-    setConfig({ ...config, topic: e.target.value });
+  useEffect(() => {
+    setConfig(prev => ({
+      ...prev,
+      ...initialConfig,
+      participants: initialConfig.participants || prev.participants,
+      scenario: initialConfig.scenario && scenarios.find(s => s.id === initialConfig.scenario) 
+                 ? initialConfig.scenario 
+                 : defaultScenario || prev.scenario
+    }));
+  }, [initialConfig, scenarios, defaultScenario]);
+
+  const handleConfigChange = (key, value) => {
+    setConfig(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
-  // 處理附註補充資料變更
-  const handleAdditionalNotesChange = (e) => {
-    setConfig({ ...config, additional_notes: e.target.value });
+  const handleParticipantsChange = (newParticipants) => {
+    setConfig(prev => ({ ...prev, participants: newParticipants }));
   };
 
-  // 處理回合數量變更
-  const handleRoundsChange = (e) => {
-    const rounds = parseInt(e.target.value);
-    if (rounds >= 1 && rounds <= 20) {
-      setConfig({ ...config, rounds });
+  const handleStartConference = async () => {
+    if (!config.topic?.trim()) {
+      toast.warn('請輸入會議主題');
+      return;
+    }
+    const activeParticipants = config.participants?.filter(p => p.isActive) ?? [];
+    if (activeParticipants.length === 0) {
+      toast.warn('請至少選擇一位活躍的智能體參與者');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await onStart({ ...config, participants: activeParticipants });
+    } catch (error) {
+      console.error('Failed to start conference:', error);
+      const errorMsg = error.response?.data?.detail || error.message || '啟動會議失敗';
+      toast.error(`啟動會議失敗: ${errorMsg}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // 處理主席變更
-  const handleChairChange = (e) => {
-    setConfig({ ...config, chair: e.target.value });
+  const handleEditAgent = (agentToEdit) => {
+    setIsEditingAgent(agentToEdit);
   };
 
-  // 處理情境模組變更
-  const handleScenarioChange = (e) => {
-    setConfig({ ...config, scenario: e.target.value });
-  };
-
-  // 處理參與者活躍狀態變更
-  const handleParticipantActiveChange = (id, isActive) => {
+  const handleSaveAgent = (updatedAgent) => {
     const updatedParticipants = config.participants.map(p => 
-      p.id === id ? { ...p, isActive } : p
+      p.id === updatedAgent.id ? updatedAgent : p
     );
-    setConfig({ ...config, participants: updatedParticipants });
+    setConfig(prev => ({ ...prev, participants: updatedParticipants }));
+    localStorage.setItem('agents', JSON.stringify(updatedParticipants));
+    window.dispatchEvent(new CustomEvent('agentDataChanged', { detail: updatedParticipants }));
+    setIsEditingAgent(null);
+    toast.success('智能體更新成功');
   };
 
-  // 啟動會議
-  const handleStartConference = () => {
-    if (!config.topic.trim()) {
-      alert('請輸入會議主題');
+  const handleDownloadScenario = () => {
+    if (!config.scenario) {
+      toast.warn('請先選擇一個研討模式');
+      return;
+    }
+    
+    const downloadUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/scenario/${config.scenario}/package`;
+    
+    toast.info(`準備下載模式 ${config.scenario}...`);
+
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+
+    link.click();
+
+    document.body.removeChild(link);
+  };
+
+  const handleUploadScenario = async (event) => {
+    const file = event.target.files[0];
+    if (!file) {
       return;
     }
 
-    const activeParticipants = config.participants.filter(p => p.isActive);
-    if (activeParticipants.length < 3) {
-      alert('至少需要3位有效參與者才能開始會議');
+    if (!file.name.endsWith('.json')) {
+      toast.error('請上傳 .json 格式的檔案');
       return;
     }
 
-    setIsSubmitting(true);
-    // 模擬API請求延遲
-    setTimeout(() => {
-      onStart(config);
-      setIsSubmitting(false);
-    }, 500);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post('/api/scenario/package/upload', formData, {
+        baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      if (response.data.success) {
+        toast.success(response.data.message || '研討模式上傳成功！');
+        await loadScenarios(); 
+        if (response.data.scenario_id) {
+          setConfig(prev => ({ ...prev, scenario: response.data.scenario_id }));
+        }
+      } else {
+        toast.error(response.data.error || '研討模式上傳失敗');
+      }
+    } catch (error) {
+      console.error('Failed to upload scenario:', error);
+      const errorMsg = error.response?.data?.detail || error.response?.data?.error || error.message || '上傳失敗';
+      toast.error(`研討模式上傳失敗: ${errorMsg}`);
+    } finally {
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
-  // 預設主題提示
-  const defaultTopics = [
-    '智能家居市場拓展策略',
-    '新產品開發計劃',
-    '年度預算分配',
-    '品牌重塑與定位',
-    '人才招募與培養方案',
-    '遠程辦公政策實施',
-    '數字化轉型戰略'
-  ];
+  const triggerFileUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
 
-  // 隨機選擇一個預設主題
-  const selectRandomTopic = () => {
-    const randomTopic = defaultTopics[Math.floor(Math.random() * defaultTopics.length)];
-    setConfig({ ...config, topic: randomTopic });
+  const handleDeleteScenarioClick = () => {
+    if (config.scenario && config.scenario !== defaultScenario) {
+      setScenarioToDelete(config.scenario);
+      onOpenDeleteDialog();
+    } else {
+      toast.warn('不能刪除默認模式或未選擇模式');
+    }
+  };
+
+  const confirmDeleteScenario = async () => {
+    if (!scenarioToDelete) return;
+    setIsLoading(true);
+    try {
+      await axios.delete(`/api/scenario/${scenarioToDelete}`, {
+        baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+      });
+      
+      toast.success(`研討模式 "${scenarioToDelete}" 刪除成功！`);
+      setScenarioToDelete(null);
+      await loadScenarios();
+      setConfig(prev => ({ ...prev, scenario: defaultScenario }));
+      onCloseDeleteDialog();
+    } catch (error) {
+      console.error(`Failed to delete scenario ${scenarioToDelete}:`, error);
+      const errorMsg = error.response?.data?.detail || error.message || '刪除失敗';
+      toast.error(`刪除研討模式失敗: ${errorMsg}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="container mx-auto p-4 max-w-4xl">
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <h1 className="text-3xl font-bold text-primary mb-6 text-center">飛豬隊友 AI 虛擬會議</h1>
-        
-        {/* 會議主題設置 */}
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-3">會議主題</h2>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={config.topic}
-              onChange={handleTopicChange}
-              placeholder="輸入會議討論主題..."
-              className="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-            />
-            <button
-              onClick={selectRandomTopic}
-              className="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-opacity-90 transition duration-200"
-            >
-              隨機主題
-            </button>
-          </div>
-          <p className="text-sm text-gray-500 mt-2">
-            請輸入具體的討論主題，例如「新產品研發方向」或「市場拓展戰略」等。
-          </p>
-        </div>
-        
-        {/* 附註補充資料 */}
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-3">附註補充資料</h2>
-          <textarea
-            value={config.additional_notes || ''}
-            onChange={handleAdditionalNotesChange}
-            placeholder="輸入會議的補充背景資料、參考數據或重要考量..."
-            className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-primary focus:border-primary"
+    <Box p={5}>
+      <ToastContainer position="top-right" autoClose={3000} />
+      <h2>會議設定</h2>
+      
+      <Box mb={4}>
+        <FormControl isRequired>
+          <FormLabel htmlFor="topic">研討主題</FormLabel>
+          <Input 
+            id="topic" 
+            value={config.topic || ''}
+            onChange={e => handleConfigChange('topic', e.target.value)}
+            placeholder="輸入會議主題"
           />
-          <p className="text-sm text-gray-500 mt-2">
-            添加任何您希望AI角色考慮的附加資料，例如市場數據、關鍵要求或背景信息。這些資料將被納入會議討論中。
-          </p>
-        </div>
-        
-        {/* 會議參數設置 */}
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-3">會議參數</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block mb-1">討論回合數</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={config.rounds}
-                  onChange={handleRoundsChange}
-                  className="w-full p-2 border rounded-lg"
-                />
-                <p className="text-sm text-gray-500 mt-1">設置1-20輪之間的回合數</p>
-              </div>
-              
-              <div>
-                <label className="block mb-1">會議主席</label>
-                <select
-                  value={config.chair}
-                  onChange={handleChairChange}
-                  className="w-full p-2 border rounded-lg"
-                >
-                  {config.participants
-                    .filter(p => p.isActive && p.id !== 'Secretary')
-                    .map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.title})
-                      </option>
-                    ))}
-                </select>
-                <p className="text-sm text-gray-500 mt-1">主席將引導討論進程</p>
-              </div>
+        </FormControl>
+      </Box>
 
-              {/* 新增：情境模組選擇 */}
-              <div>
-                <label className="block mb-1">研討情境模式</label>
-                <select
-                  value={config.scenario || ''}
-                  onChange={handleScenarioChange}
-                  className="w-full p-2 border rounded-lg"
-                  disabled={isLoadingScenarios}
-                >
-                  {isLoadingScenarios ? (
-                    <option>載入中...</option>
-                  ) : (
-                    scenarios.scenarios && 
-                    Object.entries(scenarios.scenarios).map(([id, scenario]) => (
-                      <option key={id} value={id}>
-                        {scenario.name} - {scenario.description}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <p className="text-sm text-gray-500 mt-1">選擇會議情境模式，以優化對話邏輯</p>
-              </div>
-            </div>
-          </div>
-          
-          {/* 參與者配置 */}
-          <div>
-            <h2 className="text-xl font-semibold mb-3">會議參與者</h2>
-            <div className="space-y-2 max-h-60 overflow-y-auto p-2">
-              {config.participants.map((participant) => (
-                <div 
-                  key={participant.id} 
-                  className="flex items-center p-2 border rounded-lg hover:bg-gray-50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={participant.isActive}
-                    onChange={(e) => handleParticipantActiveChange(participant.id, e.target.checked)}
-                    className="mr-3 h-5 w-5 text-primary focus:ring-primary"
-                    disabled={participant.id === 'Secretary'}
-                  />
-                  <div>
-                    <div className="font-medium">{participant.name}</div>
-                    <div className="text-sm text-gray-500">{participant.title}</div>
-                  </div>
-                  <div className="ml-auto text-xs bg-gray-200 px-2 py-1 rounded">
-                    溫度: {participant.temperature}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-sm text-gray-500 mt-2">
-              選擇參與會議的成員（秘書為必選成員）
-            </p>
-          </div>
-        </div>
-        
-        {/* 情境模組說明 */}
-        {scenarios.selection_guide && (
-          <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-xl font-semibold mb-2">研討情境說明</h2>
-            <div className="whitespace-pre-line text-sm">
-              {scenarios.selection_guide}
-            </div>
-          </div>
-        )}
-        
-        {/* 預設會議說明 */}
-        <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-          <h2 className="text-xl font-semibold mb-2">會議進行規則</h2>
-          <ol className="list-decimal pl-5 space-y-1">
-            <li>會議開始時，每個智能體會進行簡短自我介紹</li>
-            <li>主席將引導會議進程，提出討論議題</li>
-            <li>每輪討論中，參與者依次發表意見</li>
-            <li>討論完成所有回合後，秘書將總結會議內容</li>
-            <li>您可以在會議結束後查看或導出會議記錄</li>
-          </ol>
-        </div>
-        
-        {/* 開始會議按鈕 */}
-        <div className="text-center">
-          <button
-            onClick={handleStartConference}
-            disabled={isSubmitting || !config.topic.trim()}
-            className={`px-8 py-3 rounded-lg text-lg font-medium transition duration-200 ${
-              isSubmitting || !config.topic.trim() 
-                ? 'bg-gray-300 cursor-not-allowed' 
-                : 'bg-primary text-white hover:bg-opacity-90'
-            }`}
+      <Box mb={4}>
+        <FormControl>
+          <FormLabel htmlFor="rounds">討論回合數</FormLabel>
+          <NumberInput 
+            id="rounds" 
+            value={config.rounds || 3} 
+            min={1} 
+            max={20}
+            onChange={(valueAsString, valueAsNumber) => handleConfigChange('rounds', isNaN(valueAsNumber) ? 1 : valueAsNumber)}
           >
-            {isSubmitting ? '準備會議中...' : '開始會議'}
-          </button>
-        </div>
-        
-      </div>
-    </div>
+            <NumberInputField />
+            <NumberInputStepper>
+              <NumberIncrementStepper />
+              <NumberDecrementStepper />
+            </NumberInputStepper>
+          </NumberInput>
+        </FormControl>
+      </Box>
+
+      <Box mb={4}>
+        <FormControl>
+          <FormLabel htmlFor="scenario">討論模式</FormLabel>
+          <Flex align="center">
+            <Select 
+              id="scenario"
+              value={config.scenario || defaultScenario}
+              onChange={e => handleConfigChange('scenario', e.target.value)}
+              placeholder={isLoading ? "加載中..." : "選擇討論模式"}
+              disabled={isLoading}
+              mr={2}
+            >
+              <option value="" disabled>選擇模式...</option>
+              {scenarios.map(s => (
+                <option key={s.id} value={s.id}>{s.name} - {s.description}</option>
+              ))}
+            </Select>
+            <Tooltip label="下載當前選定的模式配置">
+              <IconButton 
+                aria-label="Download scenario" 
+                icon={<DownloadIcon />} 
+                onClick={handleDownloadScenario} 
+                disabled={!config.scenario}
+                mr={1}
+              />
+            </Tooltip>
+            <Tooltip label="上傳模式配置文件 (.json)">
+              <IconButton 
+                aria-label="Upload scenario" 
+                icon={<ArrowUpIcon />} 
+                onClick={triggerFileUpload} 
+              />
+            </Tooltip>
+            <Tooltip label="刪除當前選定的模式 (默認模式不可刪除)">
+              <IconButton
+                aria-label="Delete scenario"
+                icon={<DeleteIcon />}
+                onClick={handleDeleteScenarioClick}
+                colorScheme="red"
+                disabled={!config.scenario || config.scenario === defaultScenario || isLoading}
+              />
+            </Tooltip>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleUploadScenario}
+              style={{ display: 'none' }} 
+              accept=".json"
+            />
+          </Flex>
+          {scenarioSelectionGuide && (
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              提示: {scenarioSelectionGuide}
+            </Text>
+          )}
+        </FormControl>
+      </Box>
+      
+      <Box mb={4}>
+        <AgentSelector 
+          allAgents={config.participants || []} 
+          onAgentsChange={handleParticipantsChange}
+          onEditAgent={handleEditAgent} 
+        />
+      </Box>
+
+      <Button 
+        onClick={handleStartConference} 
+        colorScheme="teal" 
+        isLoading={isLoading}
+        disabled={isLoading}
+      >
+        開始會議
+      </Button>
+
+      {isEditingAgent && (
+        <AgentEditModal 
+          isOpen={!!isEditingAgent} 
+          onClose={() => setIsEditingAgent(null)} 
+          agent={isEditingAgent} 
+          onSave={handleSaveAgent}
+        />
+      )}
+
+      <AlertDialog
+        isOpen={isDeleteDialogOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={onCloseDeleteDialog}
+        isCentered
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize='lg' fontWeight='bold'>
+              確認刪除研討模式
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              您確定要刪除模式 "{scenarioToDelete}" 嗎？此操作無法撤銷。
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={onCloseDeleteDialog}>
+                取消
+              </Button>
+              <Button colorScheme='red' onClick={confirmDeleteScenario} ml={3} isLoading={isLoading}>
+                確認刪除
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+    </Box>
   );
 };
 

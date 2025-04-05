@@ -153,7 +153,7 @@ const ConferenceRoom = ({ config, onBackToSetup }) => {
           <button 
             onClick={exportRecord}
             className="px-4 py-2 bg-secondary text-white rounded-md hover:bg-opacity-90 transition duration-200"
-            disabled={messages.length === 0 || isLoading}
+            disabled={messages.length === 0}
           >
             匯出會議記錄
           </button>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import ConferenceRoom from './pages/ConferenceRoom';
 import SetupPanel from './pages/SetupPanel';
@@ -20,43 +20,8 @@ function App() {
     conclusion: true
   });
 
-  // 加載智能體數據
-  useEffect(() => {
-    loadAgentData();
-    
-    // 監聽智能體數據變更事件
-    window.addEventListener('agentDataChanged', handleAgentDataChanged);
-    
-    // 同時監聽 localStorage 的變化，以便在其他分頁更改數據時更新
-    window.addEventListener('storage', handleStorageChange);
-    
-    return () => {
-      window.removeEventListener('agentDataChanged', handleAgentDataChanged);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
-
-  // 處理智能體數據變化事件
-  const handleAgentDataChanged = (event) => {
-    if (event.detail) {
-      setConferenceConfig(prev => ({
-        ...prev,
-        participants: event.detail
-      }));
-    } else {
-      loadAgentData();
-    }
-  };
-
-  // 處理 localStorage 變更
-  const handleStorageChange = (event) => {
-    if (event.key === 'agents') {
-      loadAgentData();
-    }
-  };
-
-  // 從 localStorage 或默認配置加載智能體數據
-  const loadAgentData = () => {
+  // 使用 useCallback 包裝 loadAgentData
+  const loadAgentData = useCallback(() => {
     try {
       const savedAgents = localStorage.getItem('agents');
       if (savedAgents) {
@@ -95,7 +60,37 @@ function App() {
         participants: DEFAULT_ROLES
       }));
     }
-  };
+  }, [conferenceConfig.chair]);
+
+  // 使用 useCallback 包裝 handleAgentDataChanged
+  const handleAgentDataChanged = useCallback((event) => {
+    if (event.detail) {
+      setConferenceConfig(prev => ({
+        ...prev,
+        participants: event.detail
+      }));
+    } else {
+      loadAgentData();
+    }
+  }, [loadAgentData]);
+
+  // 使用 useCallback 包裝 handleStorageChange
+  const handleStorageChange = useCallback((event) => {
+    if (event.key === 'agents') {
+      loadAgentData();
+    }
+  }, [loadAgentData]);
+
+  // 將穩定引用的函數添加到 useEffect 依賴數組
+  useEffect(() => {
+    loadAgentData();
+    window.addEventListener('agentDataChanged', handleAgentDataChanged);
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('agentDataChanged', handleAgentDataChanged);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [loadAgentData, handleAgentDataChanged, handleStorageChange]);
 
   const startConference = (config) => {
     const completeConfig = {

@@ -1,55 +1,16 @@
-# 飛豬隊友 AI 虛擬會議系統 (v2.1.0)
+# 多智能體 AI 虛擬會議平台 (v0.2)
 
-[![YouTube 視頻展示](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
+[![YouTube 影片演示](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
 *[English Version README](README.md)*
 
-基於 LLM 驅動的 Multi AI Agents Group Meeting，允許多個智能體進行互動式討論，模擬商務會議、創意腦力激盪或學術辯論場景。首創具備 Web Base 即時視覺化完整呈現會議過程。 
+多智能體 AI 虛擬會議平台是一個由 LLM 驅動的多 AI 智能體群組會議平台，允許多個 AI 智能體進行互動式討論，模擬商務會議、創意腦力激盪或學術辯論。它具有開創性的基於 Web 的整個會議過程實時可視化。 
 
-## 版本說明
+## 主要功能
 
-當前版本：v2.1.0
-主要更新：
-- 改進會議暫停/恢復功能，確保會議流程真正停止和恢復。
-- 添加明確的"結束會議"按鈕及對應的後端邏輯，以正確終止會議。
-
-上一版本：v2.0.0
-主要更新：
-- 新增會議暫停/恢復功能，提升用戶對會議的控制能力
-- 實現附註補充資料欄位，為會議提供額外背景資訊
-- 增強會議記錄顯示，包含會議模式資訊
-- 修復辯論模式下智能體連續發言的問題
-- 改進WebSocket連接穩定性和錯誤處理
-- 將溫度設定與會議模式解耦，提供更大彈性
-- **統一前後端智能體參數模型（包含獨立溫度和自定義提示詞）**
-- **更新文件和後端版本號至 2.0**
-
-上一版本（v1.5）：
-- 將會議主持人改為豬秘書(AI秘書)角色，優化會議流程
-- 增強主席角色功能，在會議開始時提出3個相關議題和明確目標
-- 改進討論流程，讓主席在每輪開始時檢視前一輪是否達成共識
-- 修復主持人在介紹階段重複發言的問題
-- 優化主席與秘書之間的角色分工，使流程更加自然
-
-上一版本（v1.2）：
-- 新增完整的智能體管理介面，支持創建、編輯和管理 AI 角色
-- 實現智能體導入/導出功能，支持批量操作
-- 添加角色提示詞功能，影響 AI 角色的行為和回應風格
-- 增強頁面間的數據同步，改進狀態管理
-- 修復智能體名稱顯示問題，提高 UI 一致性
-
-上一版本（v1.1）：
-- 增強WebSocket連接穩定性，添加自動重連機制
-- 優化前端錯誤處理邏輯，提高用戶體驗
-- 新增自動化重啟腳本，方便開發與部署
-- 修復會議丟失問題，提升系統可靠性
-- 完善異常捕獲與日誌記錄
-
-## 功能特點
-
-- **智能體管理功能**：完整的介面用於創建、編輯和管理具有自定義個性的 AI 角色
-- **智能體交互與個性化**：每一位AI角色均由LLM驅動，具備不同的個性、專業領域和發言風格
-- **會議流程管理**：支持自定義主題、多回合討論、角色分配
+- **AI 智能體管理**：完整的界面，用於創建、編輯和管理具有自訂個性的 AI 智能體
+- **AI 智能體互動與個性化**：每個 AI 角色都由 LLM 驅動，具有獨特的個性、專業領域和說話風格
+- **會議流程管理**：支持自訂主題、多輪討論和角色分配
 - **視覺化對話呈現**：動態展示智能體對話，類似於真實會議場景
 - **會議紀錄與結果分析**：自動生成會議記錄，提供關鍵內容摘要
 - **預設角色系統**：包含總經理、行銷經理、業務經理等不同職能的"豬隊友"角色
@@ -148,8 +109,8 @@ uvicorn app.main:app --reload
 
 1. 克隆倉庫
    ```bash
-   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
-   cd TinyPigTroupe
+   git clone https://github.com/mkhsu2002/Multi-AI-Agents-V-Meeting-Platform.git
+   cd Multi-AI-Agents-V-Meeting-Platform
    ```
 
 2. 安裝並啟動後端
@@ -182,8 +143,8 @@ uvicorn app.main:app --reload
 
 2. 克隆倉庫並導航到項目目錄
    ```bash
-   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
-   cd TinyPigTroupe
+   git clone https://github.com/mkhsu2002/Multi-AI-Agents-V-Meeting-Platform.git
+   cd Multi-AI-Agents-V-Meeting-Platform
    ```
 
 3. 為後端創建 .env 文件並添加您的 OpenAI API 密鑰
@@ -213,8 +174,8 @@ uvicorn app.main:app --reload
 
 2. 克隆倉庫並設置後端
    ```python
-   !git clone https://github.com/mkhsu2002/TinyPigTroupe.git
-   %cd TinyPigTroupe/backend
+   !git clone https://github.com/mkhsu2002/Multi-AI-Agents-V-Meeting-Platform.git
+   %cd Multi-AI-Agents-V-Meeting-Platform/backend
    !pip install -r requirements.txt
    
    # 創建包含 OpenAI API 密鑰的 .env 文件

@@ -1,49 +1,10 @@
-# FlyPig AI Virtual Conference System (v2.1.5)
+# Multi-AI-Agents V-Meeting Platform (v0.2)
 
 [![YouTube Video Presentation](https://img.youtube.com/vi/GujQzX5TVqE/0.jpg)](https://www.youtube.com/watch?v=GujQzX5TVqE)
 
 *[繁體中文版 README](README.zh-TW.md)*
 
-FlyPig AI Virtual Conference System is an LLM-driven Multi AI Agents Group Meeting platform that allows multiple AI agents to engage in interactive discussions, simulating business meetings, creative brainstorming sessions, or academic debates. It features a pioneering web-based real-time visualization of the entire meeting process.
-
-## Version History
-
-Current Version: v2.1.5
-Major Updates:
-- Improved meeting pause/resume functionality, ensuring the conference flow actually stops and resumes.
-- Added an explicit "End Conference" button and corresponding backend logic to properly terminate meetings.
-
-Previous Version: v2.0.0
-Major Updates:
-- Added meeting pause/resume functionality for better control.
-- Implemented an additional notes field for extra context.
-- Enhanced meeting log display to include scenario mode info.
-- Fixed issue with agents speaking consecutively in debate mode.
-- Improved WebSocket connection stability and error handling.
-- Decoupled temperature setting from scenarios for flexibility.
-- Unified backend/frontend agent parameter model (incl. individual temp & custom role prompts).
-- Updated documentation and backend version number to 2.0.
-
-Previous Version (v1.5):
-- Changed moderator to "Secretary Pig" role, optimizing flow.
-- Enhanced chair role to propose 3 related topics and goals.
-- Improved discussion flow with chair reviewing consensus.
-- Fixed moderator repeating introductions.
-- Optimized chair/secretary role division.
-
-Previous Version (v1.2):
-- Added complete agent management interface (create, edit, manage roles).
-- Implemented agent import/export functionality.
-- Added role prompts to influence AI behavior/style.
-- Enhanced cross-page data synchronization and state management.
-- Fixed agent name display issues for UI consistency.
-
-Previous Version (v1.1):
-- Enhanced WebSocket stability with auto-reconnect.
-- Optimized frontend error handling.
-- Added automated restart scripts.
-- Fixed meeting loss issues, improving reliability.
-- Improved exception handling and logging.
+Multi-AI-Agents V-Meeting Platform is an LLM-driven Multi AI Agents Group Meeting platform that allows multiple AI agents to engage in interactive discussions, simulating business meetings, creative brainstorming sessions, or academic debates. It features a pioneering web-based real-time visualization of the entire meeting process.
 
 ## Key Features
 
@@ -148,8 +109,8 @@ Access `http://localhost:8000/api-test` to open the API test page for:
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
-   cd TinyPigTroupe
+   git clone https://github.com/mkhsu2002/Multi-AI-Agents-V-Meeting-Platform.git
+   cd Multi-AI-Agents-V-Meeting-Platform
    ```
 
 2. Install and start the backend
@@ -182,8 +143,8 @@ Access `http://localhost:8000/api-test` to open the API test page for:
 
 2. Clone the repository and navigate to the project directory
    ```bash
-   git clone https://github.com/mkhsu2002/TinyPigTroupe.git
-   cd TinyPigTroupe
+   git clone https://github.com/mkhsu2002/Multi-AI-Agents-V-Meeting-Platform.git
+   cd Multi-AI-Agents-V-Meeting-Platform
    ```
 
 3. Create .env file for the backend and add your OpenAI API key
@@ -213,8 +174,8 @@ Access `http://localhost:8000/api-test` to open the API test page for:
 
 2. Clone the repository and set up the backend
    ```python
-   !git clone https://github.com/mkhsu2002/TinyPigTroupe.git
-   %cd TinyPigTroupe/backend
+   !git clone https://github.com/mkhsu2002/Multi-AI-Agents-V-Meeting-Platform.git
+   %cd Multi-AI-Agents-V-Meeting-Platform/backend
    !pip install -r requirements.txt
    
    # Create .env file with your OpenAI API key
